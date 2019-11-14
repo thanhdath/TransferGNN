@@ -41,7 +41,8 @@ class Net(torch.nn.Module):
 def train():
     model.train()
     optimizer.zero_grad()
-    criterion(model()[data.train_mask], data.y[data.train_mask]).backward()
+    outputs = model()[data.train_mask]
+    criterion(outputs, data.y[data.train_mask]).backward()
     # F.nll_loss(model()[data.train_mask], data.y[data.train_mask]).backward()
     optimizer.step()
 
@@ -55,6 +56,8 @@ def f1(output, labels, multiclass=False):
         return micro, macro
     else:
         probs = torch.sigmoid(output)
+        probs[probs>0.5] = 1
+        probs[probs<=0.5] = 0
         probs = probs.cpu().detach().numpy().astype(np.int32)
         labels = labels.cpu().detach().numpy().astype(np.int32)
         micro = f1_score(labels, probs, average='micro')
@@ -92,7 +95,7 @@ criterion = torch.nn.BCEWithLogitsLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
 
 best_val_acc = test_acc = 0
-for epoch in range(1, 500):
+for epoch in range(1, 300):
     train()
     micros, macros = test()
     train_acc, val_acc, tmp_test_acc = micros
@@ -104,7 +107,6 @@ for epoch in range(1, 500):
     if epoch%10 == 0:
         log = 'Epoch: {:03d}, micro-macro Train: {:.4f}-{:.4f}, Val: {:.4f}-{:.4f}, Test: {:.4f}-{:.4f}'
         print(log.format(epoch, train_acc, train_macro, val_acc, val_macro, tmp_test_acc, test_macro))
-
 if not os.path.isdir("model"):
     os.makedirs("model")
 

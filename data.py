@@ -12,7 +12,8 @@ labels2int = {
     "Prepositions": 2,
     "Conjunction": 3,
     "Modal": 4,
-    "Pronoun": 5
+    "Pronoun": 5,
+    "null": 6
 }
 
 def load_adj(adj_file):
@@ -33,7 +34,10 @@ def load_graph(adj_file, feature_file, label_file):
     for i, line in enumerate(open(label_file)):
         line = re.split("\s+", line.strip())
         node = i
-        label = [labels2int[i] for i in line[1:]]
+        if len(line) == 1:
+            label = [labels2int["null"]]
+        else:
+            label = [labels2int[i] for i in line[1:]]
         if len(label)>1: multiclass = True
         node2label[node] = label
     print("Multiclass: ", multiclass)
