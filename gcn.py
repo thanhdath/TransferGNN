@@ -94,22 +94,28 @@ if args.transfer is not None:
 criterion = torch.nn.BCEWithLogitsLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
 
-best_val_acc = test_acc = 0
-for epoch in range(1, 300):
+best_val_acc = 0
+best_model = None
+epochs = 300
+model_name = f"model/{getfilename(args.adj)}-transfer-from-{getfilename(args.transfer)}.pkl"
+for epoch in range(1, epochs):
     train()
+    if epoch == epochs - 1:
+        model.load_state_dict(torch.load(model_name))
+        print("Load best model")
+
     micros, macros = test()
     train_acc, val_acc, tmp_test_acc = micros
     train_macro, val_macro, test_macro = macros
 
     if val_acc > best_val_acc:
         best_val_acc = val_acc
-        test_acc = tmp_test_acc
-    if epoch%10 == 0:
+        torch.save(model.state_dict(), model_name)
+        # test_acc = tmp_test_acc
+    if epoch%10 == 0 or epoch == epochs-1:
         log = 'Epoch: {:03d}, micro-macro Train: {:.4f}-{:.4f}, Val: {:.4f}-{:.4f}, Test: {:.4f}-{:.4f}'
         print(log.format(epoch, train_acc, train_macro, val_acc, val_macro, tmp_test_acc, test_macro))
 if not os.path.isdir("model"):
     os.makedirs("model")
-
-model_name = f"model/{getfilename(args.adj)}-transfer-from-{getfilename(args.transfer)}.pkl"
-torch.save(model.state_dict(), model_name)
+# torch.save(model.state_dict(), model_name)
 print("Model has been saved to", model_name)
