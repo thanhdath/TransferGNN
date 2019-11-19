@@ -10,6 +10,8 @@ import argparse
 import os
 from sklearn.metrics import f1_score
 import numpy as np
+#import matplotlib.pyplot as plt
+import tensorboardX
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--transfer", default=None)
@@ -97,7 +99,11 @@ optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
 best_val_acc = 0
 best_model = None
 epochs = 300
-model_name = f"model/{getfilename(args.adj)}-transfer-from-{getfilename(args.transfer)}.pkl"
+if args.transfer is not None:
+    model_name = f"model/{getfilename(args.adj)}-transfer-from-{getfilename(args.transfer)}.pkl"
+else:
+    model_name = f"model/{getfilename(args.adj)}.pkl"
+writer = tensorboardX.SummaryWriter(logdir="runs/"+model_name.split("/")[-1].split(".")[0])
 for epoch in range(1, epochs):
     train()
     if epoch == epochs - 1:
@@ -115,6 +121,9 @@ for epoch in range(1, epochs):
     if epoch%10 == 0 or epoch == epochs-1:
         log = 'Epoch: {:03d}, micro-macro Train: {:.4f}-{:.4f}, Val: {:.4f}-{:.4f}, Test: {:.4f}-{:.4f}'
         print(log.format(epoch, train_acc, train_macro, val_acc, val_macro, tmp_test_acc, test_macro))
+        writer.add_scalar("train_acc", train_acc, epoch)
+        writer.add_scalar("val_acc", val_acc, epoch)
+        writer.add_scalar("test_acc", tmp_test_acc, epoch)
 if not os.path.isdir("model"):
     os.makedirs("model")
 # torch.save(model.state_dict(), model_name)
