@@ -16,28 +16,37 @@ labels2int = {
     "null": 6
 }
 
-def load_adj(adj_file):
-    adj = []
+def load_edgelist(adj_file):
+    edgelist = []
     with open(adj_file) as fp:
         for line in fp:
             elms = line.split()
-            adj.append(elms)
-    adj = np.array(adj, dtype=int)
-    return adj
+            edgelist.append(elms)
+    edgelist = np.array(edgelist, dtype=int)
+    if edgelist.shape[0] == edgelist.shape[1]:
+        # adj
+        nodes = np.arange(len(edgelist))
+        edge_index = np.argwhere(edgelist>0)
+        edge_weight = edgelist[edge_index[:,0], edge_index[:,1]]
+        edgelist = np.zeros((len(edge_index), 3))
+        edgelist[:,:2] = edge_index
+        edgelist[:,2] = edge_weight
+    else:
+        nodes = np.arange(edges[:,:2].max() + 1)
+    return edgelist, nodes
 
 def load_graph(adj_file, feature_file, label_file):
-    adj = load_adj(adj_file)
-    nodes = np.arange(len(adj))
-    
+    edges, nodes = load_edgelist(adj_file)
     node2label = {}
     multiclass = False
     for i, line in enumerate(open(label_file)):
         line = re.split("\s+", line.strip())
         node = i
-        if len(line) == 1:
-            label = [labels2int["null"]]
-        else:
-            label = [labels2int[i] for i in line[1:]]
+        # if len(line) == 1:
+        #     label = [labels2int["null"]]
+        # else:
+        #     label = [labels2int[i] for i in line[1:]]
+        label = line[1:]
         if len(label)>1: multiclass = True
         node2label[node] = label
     print("Multiclass: ", multiclass)
@@ -53,13 +62,14 @@ def load_graph(adj_file, feature_file, label_file):
     
     x = np.load(feature_file, allow_pickle=True)["features"][()]
     x = torch.FloatTensor(x)
-    edge_index = np.argwhere(adj > 0)
-    edge_weight = torch.FloatTensor(adj[edge_index[:,0], edge_index[:,1]])
+    edge_index = edges[:,:2]
+    edge_weight = torch.FloatTensor(edges[:,2])
     edge_index = torch.LongTensor(edge_index.T)
 
     n_nodes = len(nodes)
-    n_train = int(0.7*n_nodes)
-    n_val = int(0.1*n_nodes)
+    n_train = int(0.8*n_nodes)
+    # n_val = int(0.2*n_nodes)
+    n_val = n_nodes - n_train
 
     train_mask = np.zeros((n_nodes,))
     val_mask = np.zeros((n_nodes,))

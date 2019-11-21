@@ -16,17 +16,21 @@ import tensorboardX
 parser = argparse.ArgumentParser()
 parser.add_argument("--transfer", default=None)
 parser.add_argument("--adj", default="twain_tramp/wan_twain_tramp_1.txt")
+parser.add_argument("--labels", default="labels.txt")
+parser.add_argument("--features", default="features.npz")
 args = parser.parse_args()
 
-dataset = load_graph(args.adj, "features.npz", "labels.txt")
+dataset = load_graph(args.adj, args.features, args.labels)
 # num_classes = int(dataset.y.max()) + 1
 num_classes = dataset.y.shape[1]
+print("Num features:", dataset.num_features)
+print("Num classes:", num_classes)
 
 class Net(torch.nn.Module):
     def __init__(self):
         super(Net, self).__init__()
-        self.conv1 = GCNConv(dataset.num_features, 16, cached=True)
-        self.conv2 = GCNConv(16, num_classes, cached=True)
+        self.conv1 = GCNConv(dataset.num_features, 32, cached=True)
+        self.conv2 = GCNConv(32, num_classes, cached=True)
         # self.conv1 = ChebConv(data.num_features, 16, K=2)
         # self.conv2 = ChebConv(16, data.num_features, K=2)
 
@@ -49,6 +53,7 @@ def train():
     optimizer.step()
 
 def f1(output, labels, multiclass=False):
+    if len(output) == 0: return 0, 0
     if not multiclass:
         preds = output.max(1)[1]
         preds = preds.cpu().detach().numpy()
@@ -89,12 +94,19 @@ def getfilename(path):
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 data = dataset.to(device)
 model = Net().to(device)
+lr = 0.01
 if args.transfer is not None:
     print("Load pretrained model", args.transfer)
-    model.load_state_dict(torch.load(args.transfer))
-
+    pretrained_state_dict = torch.load(args.transfer)
+    differ_shape_params = []
+    model_state_dict = model.state_dict()
+    for k in pretrained_state_dict.keys():
+        if pretrained_state_dict[k].shape != model_state_dict[k].shape:
+            differ_shape_params.append(k)
+    pretrained_state_dict.update({k: v for k,v in model.state_dict().items() if k in differ_shape_params})
+    model.load_state_dict(pretrained_state_dict)
 criterion = torch.nn.BCEWithLogitsLoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
+optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=5e-4)
 
 best_val_acc = 0
 best_model = None
@@ -104,7 +116,13 @@ if args.transfer is not None:
 else:
     model_name = f"model/{getfilename(args.adj)}.pkl"
 writer = tensorboardX.SummaryWriter(logdir="runs/"+model_name.split("/")[-1].split(".")[0])
+
+
 for epoch in range(1, epochs):
+    if args.transfer is not None and epoch < epochs//3:
+        model.conv1.requires_grad = False
+    else:
+        model.conv1.requires_grad = True
     train()
     if epoch == epochs - 1:
         model.load_state_dict(torch.load(model_name))
