@@ -20,7 +20,8 @@ def load_edgelist(adj_file):
     edgelist = []
     with open(adj_file) as fp:
         for line in fp:
-            elms = line.split()
+            elms = re.split("[,\s]+", line)
+            elms = [x for x in elms if len(x) > 0]
             edgelist.append(elms)
     edgelist = np.array(edgelist, dtype=int)
     if edgelist.shape[0] == edgelist.shape[1]:
@@ -32,13 +33,14 @@ def load_edgelist(adj_file):
         edgelist[:,:2] = edge_index
         edgelist[:,2] = edge_weight
     else:
-        nodes = np.arange(edges[:,:2].max() + 1)
+        nodes = np.arange(edgelist[:,:2].max() + 1)
     return edgelist, nodes
 
-def load_graph(adj_file, feature_file, label_file):
+def load_graph(adj_file, feature_file, label_file, multiclass=None):
     edges, nodes = load_edgelist(adj_file)
     node2label = {}
-    multiclass = False
+    multiclass_found = False
+    conversion = None
     for i, line in enumerate(open(label_file)):
         line = re.split("\s+", line.strip())
         node = i
@@ -46,9 +48,17 @@ def load_graph(adj_file, feature_file, label_file):
         #     label = [labels2int["null"]]
         # else:
         #     label = [labels2int[i] for i in line[1:]]
-        label = line[1:]
-        if len(label)>1: multiclass = True
+        if conversion is None:
+            try:
+                [int(x) for x in line[1:]]
+                conversion = int
+            except:
+                conversion = str
+        label = [conversion(x) for x in line[1:]]
+        if len(label)>1: multiclass_found = True
         node2label[node] = label
+    if multiclass is None:
+        multiclass = multiclass_found
     print("Multiclass: ", multiclass)
 
     labels =[node2label[node] for node in nodes]
@@ -84,8 +94,8 @@ def load_graph(adj_file, feature_file, label_file):
 
     data = Data(x=x, y=y, edge_index=edge_index, 
         train_mask=train_mask, test_mask=test_mask, val_mask=val_mask,
-        edge_weight=edge_weight)
-    return data
+        edge_attr=edge_weight)
+    return data, multiclass
 
 if __name__ == '__main__':
     data = load_graph("twain_tramp/wan_twain_tramp_1.txt", "features.npz", "labels.txt")

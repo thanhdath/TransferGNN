@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 from torch_geometric.datasets import Planetoid
 import torch_geometric.transforms as T
-from torch_geometric.nn import GCNConv, ChebConv  # noqa
+from torch_geometric.nn import ChebConv, GATConv, GCNConv
 from data import load_graph
 import argparse
 import os
@@ -12,44 +12,81 @@ from sklearn.metrics import f1_score
 import numpy as np
 #import matplotlib.pyplot as plt
 import tensorboardX
+from sage import SAGEConv
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--transfer", default=None)
 parser.add_argument("--adj", default="twain_tramp/wan_twain_tramp_1.txt")
 parser.add_argument("--labels", default="labels.txt")
 parser.add_argument("--features", default="features.npz")
+parser.add_argument("--multiclass", default=None, type=int)
+parser.add_argument("--epochs", default=1000, type=int)
+parser.add_argument("--hidden", default=32, type=int)
 args = parser.parse_args()
+if args.multiclass == 0:
+    args.multiclass = False
+elif args.multiclass == 1:
+    args.multiclass = True
 
-dataset = load_graph(args.adj, args.features, args.labels)
+dataset, multiclass = load_graph(args.adj, args.features, args.labels, args.multiclass)
 # num_classes = int(dataset.y.max()) + 1
-num_classes = dataset.y.shape[1]
+if multiclass:
+    num_classes = dataset.y.shape[1]
+else:
+    num_classes = int(dataset.y.max() + 1)
 print("Num features:", dataset.num_features)
 print("Num classes:", num_classes)
 
+# GCN
 class Net(torch.nn.Module):
     def __init__(self):
         super(Net, self).__init__()
-        self.conv1 = GCNConv(dataset.num_features, 32, cached=True)
-        self.conv2 = GCNConv(32, num_classes, cached=True)
+        # self.conv1 = GCNConv(dataset.num_features, 32, cached=True)
+        # self.conv2 = GCNConv(32, num_classes, cached=True)
         # self.conv1 = ChebConv(data.num_features, 16, K=2)
         # self.conv2 = ChebConv(16, data.num_features, K=2)
+        self.conv1 = SAGEConv(dataset.num_features, args.hidden, normalize=False)
+        self.conv2 = SAGEConv(args.hidden, num_classes, normalize=False)
 
     def forward(self):
-        x, edge_index, edge_weight = data.x, data.edge_index, data.edge_weight
-        x = F.relu(self.conv1(x, edge_index,
-            edge_weight
-        ))
+        x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
+        x = self.conv1(x, edge_index, edge_attr=edge_attr)
+        # x = x / data.x.shape[0]
+        x = F.relu(x)
         x = F.dropout(x, training=self.training)
-        x = self.conv2(x, edge_index, edge_weight)
-        return x
-        # return F.log_softmax(x, dim=1)
+        x = self.conv2(x, edge_index, edge_attr=edge_attr)
+        # x = x / data.x.shape[0]
+        if multiclass:
+            return x
+        return F.log_softmax(x, dim=1)
+
+# GAT
+# class Net(torch.nn.Module):
+#     def __init__(self):
+#         super(Net, self).__init__()
+#         self.conv1 = GATConv(dataset.num_features, 8, heads=8, dropout=0.6)
+#         # On the Pubmed dataset, use heads=8 in conv2.
+#         self.conv2 = GATConv(
+#             8 * 8, num_classes, heads=1, concat=True, dropout=0.6)
+
+#     def forward(self):
+#         x = F.dropout(data.x, p=0.6, training=self.training)
+#         x = F.elu(self.conv1(x, data.edge_index))
+#         x = F.dropout(x, p=0.6, training=self.training)
+#         x = self.conv2(x, data.edge_index)
+#         return x
+#         # return F.log_softmax(x, dim=1)
+
 
 def train():
     model.train()
     optimizer.zero_grad()
     outputs = model()[data.train_mask]
-    criterion(outputs, data.y[data.train_mask]).backward()
-    # F.nll_loss(model()[data.train_mask], data.y[data.train_mask]).backward()
+    if multiclass:
+        criterion(outputs, data.y[data.train_mask]).backward()
+    else:
+        F.nll_loss(outputs, data.y[data.train_mask]).backward()
     optimizer.step()
 
 def f1(output, labels, multiclass=False):
@@ -77,7 +114,7 @@ def test():
     micros = []
     macros = []
     for _, mask in data('train_mask', 'val_mask', 'test_mask'):
-        micro, macro = f1(logits[mask], data.y[mask], multiclass=True)
+        micro, macro = f1(logits[mask], data.y[mask], multiclass=multiclass)
         micros.append(micro)
         macros.append(macro)
     return micros, macros
@@ -94,7 +131,7 @@ def getfilename(path):
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 data = dataset.to(device)
 model = Net().to(device)
-lr = 0.01
+lr = 0.001
 if args.transfer is not None:
     print("Load pretrained model", args.transfer)
     pretrained_state_dict = torch.load(args.transfer)
@@ -105,24 +142,32 @@ if args.transfer is not None:
             differ_shape_params.append(k)
     pretrained_state_dict.update({k: v for k,v in model.state_dict().items() if k in differ_shape_params})
     model.load_state_dict(pretrained_state_dict)
-criterion = torch.nn.BCEWithLogitsLoss()
+if multiclass:
+    criterion = torch.nn.BCEWithLogitsLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=5e-4)
 
 best_val_acc = 0
 best_model = None
-epochs = 300
+epochs = args.epochs
+if not os.path.isdir("model"):
+    os.makedirs("model")
 if args.transfer is not None:
     model_name = f"model/{getfilename(args.adj)}-transfer-from-{getfilename(args.transfer)}.pkl"
 else:
     model_name = f"model/{getfilename(args.adj)}.pkl"
 writer = tensorboardX.SummaryWriter(logdir="runs/"+model_name.split("/")[-1].split(".")[0])
 
+micros, macros = test()
+train_acc, val_acc, tmp_test_acc = micros
+train_macro, val_macro, test_macro = macros
+log = 'Epoch: 0, micro-macro Train: {:.4f}-{:.4f}, Val: {:.4f}-{:.4f}, Test: {:.4f}-{:.4f}'
+print(log.format(train_acc, train_macro, val_acc, val_macro, tmp_test_acc, test_macro))
 
 for epoch in range(1, epochs):
-    if args.transfer is not None and epoch < epochs//3:
-        model.conv1.requires_grad = False
-    else:
-        model.conv1.requires_grad = True
+    # if args.transfer is not None and epoch < epochs//3:
+    #     model.conv1.requires_grad = False
+    # else:
+    #     model.conv1.requires_grad = True
     train()
     if epoch == epochs - 1:
         model.load_state_dict(torch.load(model_name))
@@ -136,13 +181,11 @@ for epoch in range(1, epochs):
         best_val_acc = val_acc
         torch.save(model.state_dict(), model_name)
         # test_acc = tmp_test_acc
-    if epoch%10 == 0 or epoch == epochs-1:
+    if epoch%20 == 0 or epoch == epochs-1:
         log = 'Epoch: {:03d}, micro-macro Train: {:.4f}-{:.4f}, Val: {:.4f}-{:.4f}, Test: {:.4f}-{:.4f}'
         print(log.format(epoch, train_acc, train_macro, val_acc, val_macro, tmp_test_acc, test_macro))
         writer.add_scalar("train_acc", train_acc, epoch)
         writer.add_scalar("val_acc", val_acc, epoch)
         writer.add_scalar("test_acc", tmp_test_acc, epoch)
-if not os.path.isdir("model"):
-    os.makedirs("model")
 # torch.save(model.state_dict(), model_name)
 print("Model has been saved to", model_name)
