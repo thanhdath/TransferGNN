@@ -161,8 +161,10 @@ micros, macros = test()
 train_acc, val_acc, tmp_test_acc = micros
 train_macro, val_macro, test_macro = macros
 log = 'Epoch: 0, micro-macro Train: {:.4f}-{:.4f}, Val: {:.4f}-{:.4f}, Test: {:.4f}-{:.4f}'
+torch.save(model.state_dict(), model_name)
 print(log.format(train_acc, train_macro, val_acc, val_macro, tmp_test_acc, test_macro))
 
+best_val_acc = val_acc
 for epoch in range(1, epochs):
     # if args.transfer is not None and epoch < epochs//3:
     #     model.conv1.requires_grad = False
@@ -188,4 +190,5 @@ for epoch in range(1, epochs):
         writer.add_scalar("val_acc", val_acc, epoch)
         writer.add_scalar("test_acc", tmp_test_acc, epoch)
 # torch.save(model.state_dict(), model_name)
+print("Best val acc: {:.3f}".format(best_val_acc))
 print("Model has been saved to", model_name)
