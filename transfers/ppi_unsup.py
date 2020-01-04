@@ -6,7 +6,7 @@ from sklearn.metrics import f1_score
 from torch_geometric.nn import GCNConv, ChebConv
 import os.path as osp
 import numpy as np
-from embed_algs import deepwalk
+# from embed_algs import deepwalk
 
 import torch
 import torch.nn.functional as F
@@ -133,8 +133,8 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = Net(train_dataset.num_features).to(device)
 # loss_op = torch.nn.BCEWithLogitsLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.005)
-from prediction import BipartiteEdgePredLayer
-loss_fn = BipartiteEdgePredLayer(is_normalized_input=False, device=device)
+# from prediction import BipartiteEdgePredLayer
+# loss_fn = BipartiteEdgePredLayer(is_normalized_input=False, device=device)
 def loss_op(U, A):
     scores = torch.sigmoid(U.mm(U.t()))
     linkpred_loss = torch.norm(scores - A, p=2) / len(U)
