@@ -34,6 +34,11 @@ def load_edgelist(adj_file):
         edgelist[:,2] = edge_weight
     else:
         nodes = np.arange(edgelist[:,:2].max() + 1)
+    if edgelist.shape[1] == 2:
+        edges = np.zeros((len(edgelist), 3))
+        edges[:, :2] = edgelist
+        edges[:,2] = 1. 
+        edgelist = edges
     return edgelist, nodes
 
 def load_graph(adj_file, feature_file, label_file, multiclass=None):

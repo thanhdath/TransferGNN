@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 from torch_geometric.datasets import Planetoid
 import torch_geometric.transforms as T
-from torch_geometric.nn import ChebConv, GATConv, GCNConv
+from torch_geometric.nn import ChebConv, GATConv, GCNConv, SAGEConv
 from data import load_graph
 import argparse
 import os

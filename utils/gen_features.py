@@ -29,3 +29,4 @@ for i in range(len(words)):
 
 features = np.array(features)
 np.savez_compressed("../features.npz", features=features)
+
