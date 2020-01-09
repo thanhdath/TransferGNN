@@ -12,7 +12,7 @@ from sklearn.metrics import f1_score
 import numpy as np
 #import matplotlib.pyplot as plt
 import tensorboardX
-from sage import SAGEConv
+# from sage import SAGEConv
 
 
 parser = argparse.ArgumentParser()
@@ -23,6 +23,7 @@ parser.add_argument("--features", default="features.npz")
 parser.add_argument("--multiclass", default=None, type=int)
 parser.add_argument("--epochs", default=1000, type=int)
 parser.add_argument("--hidden", default=32, type=int)
+parser.add_argument("--feature-only", action='store_true')
 args = parser.parse_args()
 if args.multiclass == 0:
     args.multiclass = False
@@ -51,33 +52,28 @@ class Net(torch.nn.Module):
 
     def forward(self):
         x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
-        x = self.conv1(x, edge_index, edge_attr=edge_attr)
+        # x = self.conv1(x, edge_index, edge_attr=edge_attr)
+        x = self.conv1(x, edge_index)
         # x = x / data.x.shape[0]
         x = F.relu(x)
         x = F.dropout(x, training=self.training)
-        x = self.conv2(x, edge_index, edge_attr=edge_attr)
+        # x = self.conv2(x, edge_index, edge_attr=edge_attr)
+        x = self.conv2(x, edge_index)
         # x = x / data.x.shape[0]
         if multiclass:
             return x
         return F.log_softmax(x, dim=1)
 
-# GAT
-# class Net(torch.nn.Module):
-#     def __init__(self):
-#         super(Net, self).__init__()
-#         self.conv1 = GATConv(dataset.num_features, 8, heads=8, dropout=0.6)
-#         # On the Pubmed dataset, use heads=8 in conv2.
-#         self.conv2 = GATConv(
-#             8 * 8, num_classes, heads=1, concat=True, dropout=0.6)
-
-#     def forward(self):
-#         x = F.dropout(data.x, p=0.6, training=self.training)
-#         x = F.elu(self.conv1(x, data.edge_index))
-#         x = F.dropout(x, p=0.6, training=self.training)
-#         x = self.conv2(x, data.edge_index)
-#         return x
-#         # return F.log_softmax(x, dim=1)
-
+class SoftmaxRegression(torch.nn.Module):
+    def __init__(self):
+        super(SoftmaxRegression, self).__init__()
+        self.model = torch.nn.Linear(dataset.num_features, num_classes)
+    def forward(self):
+        x = data.x
+        x = self.model(x)
+        if multiclass:
+            return x
+        return F.log_softmax(x, dim=1)
 
 def train():
     model.train()
@@ -130,7 +126,11 @@ def getfilename(path):
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 data = dataset.to(device)
-model = Net().to(device)
+if args.feature_only:
+    print("Using softmax regression")
+    model = SoftmaxRegression().to(device)
+else:
+    model = Net().to(device)
 lr = 0.001
 if args.transfer is not None:
     print("Load pretrained model", args.transfer)

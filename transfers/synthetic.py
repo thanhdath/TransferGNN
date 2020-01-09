@@ -17,6 +17,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--lam", type=float, default=1.0)
 parser.add_argument("--mu", type=float, default=0)
 parser.add_argument("--p", type=int, default=8)
+parser.add_argument("--n1", type=int, default=256)
+parser.add_argument("--n2", type=int, default=256)
 parser.add_argument('--seed', type=int, default=100)
 args = parser.parse_args()
 np.random.seed(args.seed)
@@ -61,8 +63,8 @@ def gen_graph(n=200):
     labels[labels == -1] = 0
     return A, B, labels
 
-A1, F1, L1 = gen_graph(n=np.random.randint(150,200)*2)
-A2, F2, L2 = gen_graph(n=np.random.randint(100, 150)*2)
+A1, F1, L1 = gen_graph(n=n1)
+A2, F2, L2 = gen_graph(n=n2)
 print(F1.shape)
 A1 = torch.FloatTensor(A1).to(device)
 A2 = torch.FloatTensor(A2).to(device)
