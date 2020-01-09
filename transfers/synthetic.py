@@ -63,8 +63,8 @@ def gen_graph(n=200):
     labels[labels == -1] = 0
     return A, B, labels
 
-A1, F1, L1 = gen_graph(n=n1)
-A2, F2, L2 = gen_graph(n=n2)
+A1, F1, L1 = gen_graph(n=args.n1)
+A2, F2, L2 = gen_graph(n=args.n2)
 print(F1.shape)
 A1 = torch.FloatTensor(A1).to(device)
 A2 = torch.FloatTensor(A2).to(device)

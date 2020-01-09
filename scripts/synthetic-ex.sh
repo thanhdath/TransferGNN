@@ -39,7 +39,7 @@ do
     for i in 0 1 
     do 
         data=data-transfers/synD-seed$seed/$i
-        python -W ignore -u main.py --adj $data/syn$i.txt --labels $data/labels.txt \
+        python -W ignore -u main.py --adj $data/$i.txt --labels $data/labels.txt \
             --features $data/features.npz --epochs 500 --feature-only > $log/seed$seed-$i-feature.log
     done
     # transfer
