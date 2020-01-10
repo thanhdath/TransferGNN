@@ -15,8 +15,8 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--lam", type=float, default=1.0)
-parser.add_argument("--mu", type=float, default=0)
-parser.add_argument("--p", type=int, default=8)
+parser.add_argument("--mu", type=float, default=0.1)
+parser.add_argument("--p", type=int, default=128)
 parser.add_argument("--n1", type=int, default=256)
 parser.add_argument("--n2", type=int, default=256)
 parser.add_argument('--seed', type=int, default=100)
@@ -26,15 +26,13 @@ torch.manual_seed(args.seed)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-def gen_graph(n=200):
+def gen_graph(n=200, p=128, lam=1.0, mu=0.3):
     v = [1]*(n//2) + [-1]*(n//2)
     random.shuffle(v)
     d = 5
-    p = args.p
-    lam = args.lam
     """# Generate B (i.e. X)"""
-    mu = args.mu
-    u = np.random.normal(mu, 1/p)
+    # u = np.random.normal(0, 1/p, size=(p))
+    u = np.random.normal(0, 1/p)
     Z = np.random.randn(n, p)
     B = np.zeros((n, p))
 
@@ -63,8 +61,8 @@ def gen_graph(n=200):
     labels[labels == -1] = 0
     return A, B, labels
 
-A1, F1, L1 = gen_graph(n=args.n1)
-A2, F2, L2 = gen_graph(n=args.n2)
+A1, F1, L1 = gen_graph(n=args.n1, p=args.p, lam=args.lam, mu=args.mu)
+A2, F2, L2 = gen_graph(n=args.n2, p=args.p, lam=args.lam, mu=args.mu)
 print(F1.shape)
 A1 = torch.FloatTensor(A1).to(device)
 A2 = torch.FloatTensor(A2).to(device)

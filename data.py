@@ -66,6 +66,7 @@ def load_graph(adj_file, feature_file, label_file, multiclass=None):
         multiclass = multiclass_found
     print("Multiclass: ", multiclass)
 
+    nodes = np.array(list(sorted(node2label.keys())))
     labels =[node2label[node] for node in nodes]
     if not multiclass:
         labels = [i[0] for i in labels]
