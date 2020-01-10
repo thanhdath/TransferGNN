@@ -67,6 +67,11 @@ class Net(torch.nn.Module):
 class SoftmaxRegression(torch.nn.Module):
     def __init__(self):
         super(SoftmaxRegression, self).__init__()
+        # self.model = torch.nn.Sequential(
+        #     torch.nn.Linear(dataset.num_features, dataset.num_features*2),
+        #     torch.nn.ReLU(),
+        #     torch.nn.Linear(dataset.num_features*2, num_classes)
+        # )
         self.model = torch.nn.Linear(dataset.num_features, num_classes)
     def forward(self):
         x = data.x
