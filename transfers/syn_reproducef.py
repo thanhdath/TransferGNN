@@ -195,7 +195,7 @@ A[edge_index[:,0], edge_index[:,1]] = 1
 save_graphs(A, X, L, f"data-transfers/synf/A3-Xtest")
 # G(Xtest, sigmoid(Xtest))
 _, X, L = test_graphs[0]
-edge_index = generate_graph(torch.FloatTensor(X), kind="sigmoid", threshold=0.7)
+edge_index = generate_graph(torch.FloatTensor(X), kind="sigmoid", threshold=args.threshold)
 A = np.zeros((len(X), len(X)))
 A[edge_index[:,0], edge_index[:,1]] = 1
 save_graphs(A, X, L, f"data-transfers/synf/A4-Xtest")
