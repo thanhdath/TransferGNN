@@ -115,8 +115,8 @@ for iter in range(400):
 
 # gen edgelist, labels, featuresh
 print("Save graphs")
-X1 = F1
-X2 = F2
+X1 = model.D1.detach().cpu().numpy()
+X2 = model.D2.detach().cpu().numpy()
 features = X1
 edgelist = np.argwhere(A1.detach().cpu().numpy() > 0)
 labels = L1

@@ -12,6 +12,7 @@ import torch.nn as nn
 import random
 import os
 import argparse
+from transfers.utils import gen_graph
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--lam", type=float, default=1.0)
@@ -25,40 +26,6 @@ np.random.seed(args.seed)
 torch.manual_seed(args.seed)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-def gen_graph(n=200, p=128, lam=1.0, mu=0.3):
-    v = [1]*(n//2) + [-1]*(n//2)
-    random.shuffle(v)
-    d = 5
-    """# Generate B (i.e. X)"""
-    u = np.random.multivariate_normal(np.zeros((p)), np.eye(p)/p, 1)
-    Z = np.random.randn(n, p)
-    B = np.zeros((n, p))
-
-    for i in range(n):
-        a = np.sqrt(mu/ n)*v[i]*u
-        b = Z[i]/np.sqrt(p)
-        B[i,:] =  a + b
-    
-    """# Generate A"""
-    c_in = d + lam*np.sqrt(d)
-    c_out = d - lam*np.sqrt(d)
-
-    p_A = np.zeros((n, n))
-
-    for i in range(n):
-        for j in range(n):
-            if v[i] == v[j]:
-                p_A[i,j] = c_in / n
-            else:
-                p_A[i,j] = c_out / n
-
-    p_samples = np.random.sample((n,n))
-    A = np.zeros((n,n))
-    A[p_A > p_samples] = 1
-    labels = np.array(v)
-    labels[labels == -1] = 0
-    return A, B, labels
 
 A1, F1, L1 = gen_graph(n=args.n1, p=args.p, lam=args.lam, mu=args.mu)
 A2, F2, L2 = gen_graph(n=args.n2, p=args.p, lam=args.lam, mu=args.mu)
