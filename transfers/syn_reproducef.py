@@ -30,19 +30,22 @@ from transfers.utils import gen_graph, generate_graph
 parser = argparse.ArgumentParser()
 parser.add_argument("--lam", type=float, default=1.0)
 parser.add_argument("--mu", type=float, default=0)
-parser.add_argument("--p", type=int, default=8)
+parser.add_argument("--p", type=int, default=128)
 parser.add_argument("--n", type=int, default=256)
 parser.add_argument('--seed', type=int, default=100)
 parser.add_argument('--kind', default='knn', help="choose from knn sigmoid")
 parser.add_argument("--threshold", type=float, default=0.6)
+parser.add_argument("--n_graphs", type=int, default=256)
+parser.add_argument("--epochs", type=int, default=2000)
 args = parser.parse_args()
 np.random.seed(args.seed)
 torch.manual_seed(args.seed)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 graphs = []
-train_size = 18
-for i in range(20):
+train_size = args.n_graphs - 2
+for i in range(args.n_graphs):
+    # u = np.random.multivariate_normal(np.zeros((args.p)), np.eye(args.p)/args.p, 1)
     _, X, L = gen_graph(n=args.n, p=args.p, lam=args.lam, mu=args.mu)
     edge_index = generate_graph(torch.FloatTensor(X), kind=args.kind, k=5, threshold=args.threshold)
     A = np.zeros((len(X), len(X)))
@@ -70,7 +73,9 @@ class ModelSigmoid(nn.Module):
 
     def forward(self, graphs):
         Xs = [torch.FloatTensor(x).to(device) for _,x,_ in graphs]
+        # xs = [F.normalize(x, dim=1) for x in Xs]
         xs = [self.W(torch.pdist(d)) for d in Xs]
+        # xs = [(x-x.mean(dim=0))/x.std(dim=0) for x in xs]
         xs = [F.sigmoid(x) for x in xs]
         return xs
 
@@ -140,12 +145,16 @@ elif args.kind == "knn":
 train_halfAs = halfAs[:train_size]
 test_halfAs = halfAs[train_size:]
 
-for iter in range(2000):
+for iter in range(args.epochs):
     model.train()
     optim.zero_grad()
-    pred_As = model(train_graphs)
+    inds = np.random.permutation(len(train_graphs))[:16]
+    batch_graphs = [train_graphs[x] for x in inds]
+    batch_halfAs = [halfAs[x] for x in inds]
+
+    pred_As = model(batch_graphs)
     loss = 0
-    for pred_A, halfA in zip(pred_As, train_halfAs):
+    for pred_A, halfA in zip(pred_As, batch_halfAs):
         loss += loss_fn(pred_A, halfA)
     loss = loss / len(pred_As)
     loss.backward()
@@ -153,7 +162,7 @@ for iter in range(2000):
     if iter % 50 == 0:
         # microf11 = compute_f1(pred_As[0], halfAs[0])
         # microf12 = compute_f1(pred_As[1], halfAs[1])
-        microfs = [compute_f1(pred_A, halfA) for predA, halfA in zip(pred_As, train_halfAs)]
+        microfs = [compute_f1(pred_A, halfA) for predA, halfA in zip(pred_As, batch_halfAs)]
         pred_As = model(test_graphs)
         microfs += [compute_f1(pred_A, halfA) for predA, halfA in zip(pred_As, test_halfAs)]
         microstr = " ".join([f"{f1:.2f}" for f1 in microfs])

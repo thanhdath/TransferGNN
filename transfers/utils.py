@@ -8,6 +8,7 @@ def gen_graph(n=200, p=128, lam=1.0, mu=0.3):
     random.shuffle(v)
     d = 5
     """# Generate B (i.e. X)"""
+    # if u is None:
     u = np.random.multivariate_normal(np.zeros((p)), np.eye(p)/p, 1)
     Z = np.random.randn(n, p)
     B = np.zeros((n, p))
