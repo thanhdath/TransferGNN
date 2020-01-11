@@ -1,5 +1,7 @@
-import numpy as numpy
+import numpy as np
 import random
+import torch 
+import torch.nn.functional as F
 
 def gen_graph(n=200, p=128, lam=1.0, mu=0.3):
     v = [1]*(n//2) + [-1]*(n//2)
