@@ -14,7 +14,6 @@ import numpy as np
 import tensorboardX
 # from sage import SAGEConv
 
-
 parser = argparse.ArgumentParser()
 parser.add_argument("--transfer", default=None)
 parser.add_argument("--adj", default="twain_tramp/wan_twain_tramp_1.txt")
@@ -24,7 +23,11 @@ parser.add_argument("--multiclass", default=None, type=int)
 parser.add_argument("--epochs", default=1000, type=int)
 parser.add_argument("--hidden", default=32, type=int)
 parser.add_argument("--feature-only", action='store_true')
+parser.add_argument("--seed", default=100, type=int)
 args = parser.parse_args()
+np.random.seed(args.seed)
+torch.manual_seed(args.seed)
+
 if args.multiclass == 0:
     args.multiclass = False
 elif args.multiclass == 1:
