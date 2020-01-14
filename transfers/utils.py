@@ -3,13 +3,13 @@ import random
 import torch
 import torch.nn.functional as F
 
-def gen_graph(n=200, p=128, lam=1.0, mu=0.3):
+def gen_graph(n=200, p=128, lam=1.0, mu=0.3, u=None):
     v = [1]*(n//2) + [-1]*(n//2)
     random.shuffle(v)
     d = 5
     """# Generate B (i.e. X)"""
-    # if u is None:
-    u = np.random.multivariate_normal(np.zeros((p)), np.eye(p)/p, 1)
+    if u is None:
+        u = np.random.multivariate_normal(np.zeros((p)), np.eye(p)/p, 1)
     Z = np.random.randn(n, p)
     B = np.zeros((n, p))
 
