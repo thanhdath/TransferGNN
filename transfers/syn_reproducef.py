@@ -44,9 +44,9 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 graphs = []
 train_size = args.n_graphs - 2
+u = np.random.multivariate_normal(np.zeros((args.p)), np.eye(args.p)/args.p, 1)
 for i in range(args.n_graphs):
-    u = np.random.multivariate_normal(np.zeros((args.p)), np.eye(args.p)/args.p, 1)
-    _, X, L = gen_graph(n=args.n, p=args.p, lam=args.lam, mu=args.mu, u=u, seed=args.seed)
+    _, X, L = gen_graph(n=args.n, p=args.p, lam=args.lam, mu=args.mu, u=u)
     edge_index = generate_graph(torch.FloatTensor(X), kind=args.kind, k=5, threshold=args.threshold)
     A = np.zeros((len(X), len(X)))
     A[edge_index[:,0], edge_index[:,1]] = 1
