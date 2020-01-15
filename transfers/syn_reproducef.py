@@ -46,7 +46,7 @@ graphs = []
 train_size = args.n_graphs - 2
 for i in range(args.n_graphs):
     u = np.random.multivariate_normal(np.zeros((args.p)), np.eye(args.p)/args.p, 1)
-    _, X, L = gen_graph(n=args.n, p=args.p, lam=args.lam, mu=args.mu, u=u)
+    _, X, L = gen_graph(n=args.n, p=args.p, lam=args.lam, mu=args.mu, u=u, seed=args.seed)
     edge_index = generate_graph(torch.FloatTensor(X), kind=args.kind, k=5, threshold=args.threshold)
     A = np.zeros((len(X), len(X)))
     A[edge_index[:,0], edge_index[:,1]] = 1
@@ -186,6 +186,7 @@ print("save graphs")
 A, X, L = train_graphs[0]
 save_graphs(A, X, L, f"data-transfers/synf-seed{args.seed}/Atrain-Xtrain")
 # G(Xtest, f(Xtest))
+
 _, X, L = test_graphs[0]
 pdistA = model([test_graphs[0]])[0].detach().cpu().numpy()
 A = np.zeros((len(X), len(X)))
@@ -196,18 +197,21 @@ A[np.arange(len(A)), np.arange(len(A))] = 1
 A[A>=0.5] = 1
 A[A<0.5] = 0
 save_graphs(A, X, L, f"data-transfers/synf-seed{args.seed}/A2-Xtest")
+
 # G(Xtest, KNN(Xtest))
 _, X, L = test_graphs[0]
 edge_index = generate_graph(torch.FloatTensor(X), kind="knn", k=5)
 A = np.zeros((len(X), len(X)))
 A[edge_index[:,0], edge_index[:,1]] = 1
 save_graphs(A, X, L, f"data-transfers/synf-seed{args.seed}/A3-Xtest")
+
 # G(Xtest, sigmoid(Xtest))
 _, X, L = test_graphs[0]
 edge_index = generate_graph(torch.FloatTensor(X), kind="sigmoid", threshold=args.threshold)
 A = np.zeros((len(X), len(X)))
 A[edge_index[:,0], edge_index[:,1]] = 1
 save_graphs(A, X, L, f"data-transfers/synf-seed{args.seed}/A4-Xtest")
+
 # G(Xtest, Atest)
 A, X, L = test_graphs[0]
 save_graphs(A, X, L, f"data-transfers/synf-seed{args.seed}/Atest-Xtest")

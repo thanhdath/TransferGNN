@@ -3,7 +3,9 @@ import random
 import torch
 import torch.nn.functional as F
 
-def gen_graph(n=200, p=128, lam=1.0, mu=0.3, u=None):
+def gen_graph(n=200, p=128, lam=1.0, mu=0.3, u=None, seed=100):
+    state = np.random.get_state()
+    np.random.seed(seed)
     v = [1]*(n//2) + [-1]*(n//2)
     random.shuffle(v)
     d = 5
@@ -11,6 +13,7 @@ def gen_graph(n=200, p=128, lam=1.0, mu=0.3, u=None):
     if u is None:
         u = np.random.multivariate_normal(np.zeros((p)), np.eye(p)/p, 1)
     Z = np.random.randn(n, p)
+    Z = np.zeros((n, p))
     B = np.zeros((n, p))
 
     for i in range(n):
@@ -36,6 +39,7 @@ def gen_graph(n=200, p=128, lam=1.0, mu=0.3, u=None):
     A[p_A > p_samples] = 1
     labels = np.array(v)
     labels[labels == -1] = 0
+    np.random.set_state(state)
     return A, B, labels
 
 def generate_graph(features, kind="sigmoid", threshold=None, k=5):
