@@ -25,7 +25,7 @@ def gen_graph(n=200, p=128, lam=1.0, mu=0.3, u=None):
     p_A = np.zeros((n, n))
     A = np.zeros((n, n))
     for i in range(n):
-        for j in range(n):
+        for j in range(i, n):
             if v[i] == v[j]:
                 p_A[i,j] = c_in / n
             else:

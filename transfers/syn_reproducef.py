@@ -47,11 +47,11 @@ graphs = []
 train_size = args.n_graphs - 2
 u = np.random.multivariate_normal(np.zeros((args.p)), np.eye(args.p)/args.p, 1)
 for i in range(args.n_graphs):
-    _, X, L = gen_graph(n=args.n, p=args.p, lam=args.lam, mu=args.mu, u=u)
-    A = generate_graph(torch.FloatTensor(X), kind=args.kind, k=args.k)
-    onehot_ids = np.eye(len(X))
-    X = np.concatenate([X, onehot_ids], axis=1)
-    graphs.append((A, X, L))
+    Asyn, X, L = gen_graph(n=args.n, p=args.p, lam=args.lam, mu=args.mu, u=u)
+    Asig = generate_graph(torch.FloatTensor(X), kind=args.kind, k=args.k)
+    # onehot_ids = np.eye(len(X))
+    # X = np.concatenate([X, onehot_ids], axis=1)
+    graphs.append((Asig, X, L, Asyn))
 train_graphs = graphs[:train_size]
 test_graphs = graphs[train_size:]
 
@@ -80,7 +80,7 @@ class ModelSigmoid(nn.Module):
         # self.W = nn.Linear(args.)
 
     def forward(self, graphs):
-        xs = [torch.FloatTensor(x).to(device) for _,x,_ in graphs]
+        xs = [torch.FloatTensor(x).to(device) for _,x,_,_ in graphs]
         xs = [torch.pdist(x) for x in xs]
         xs = [(x-x.mean())/x.std() for x in xs]
         xs = [self.W(x) for x in xs]
@@ -126,14 +126,14 @@ optim = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
 
 halfAs = []
 if args.kind == "sigmoid":
-    for A,_,_ in graphs:
+    for A,_,_,_ in graphs:
         inds = torch.triu(torch.ones(len(A),len(A))) 
         inds[np.arange(len(A)), np.arange(len(A))] = 0
         halfA = torch.FloatTensor(A[inds == 1]).to(device)
         halfAs.append(halfA)
 elif args.kind == "knn":
     halfAs = []
-    for A,_,_ in graphs:
+    for A,_,_,_ in graphs:
         halfA = A.copy()
         # halfA[np.arange(len(A)), np.arange(len(A))] = 0
         halfAs.append(torch.FloatTensor(halfA).to(device))
@@ -178,11 +178,11 @@ def save_graphs(A, X, L, outdir):
 
 
 # G(Atrain, Xtrain)
-A, X, L = train_graphs[0]
+A, X, L, _ = train_graphs[0]
 save_graphs(A, X, L, f"data-transfers/synf-seed{args.seed}/Atrain-Xtrain")
 # G(Xtest, f(Xtest))
 
-_, X, L = test_graphs[0]
+_, X, L, _ = test_graphs[0]
 pdistA = model([test_graphs[0]])[0].detach().cpu().numpy()
 A = np.zeros((len(X), len(X)))
 inds = torch.triu(torch.ones(len(A),len(A))) 
@@ -194,15 +194,15 @@ A[A<0.5] = 0
 save_graphs(A, X, L, f"data-transfers/synf-seed{args.seed}/A2-Xtest")
 
 # G(Xtest, KNN(Xtest))
-_, X, L = test_graphs[0]
+_, X, L, _ = test_graphs[0]
 A = generate_graph(torch.FloatTensor(X), kind="knn", k=args.k)
 save_graphs(A, X, L, f"data-transfers/synf-seed{args.seed}/A3-Xtest")
 
 # G(Xtest, sigmoid(Xtest))
-_, X, L = test_graphs[0]
+_, X, L, _ = test_graphs[0]
 A = generate_graph(torch.FloatTensor(X), kind="sigmoid", k=args.k)
 save_graphs(A, X, L, f"data-transfers/synf-seed{args.seed}/A4-Xtest")
 
 # G(Xtest, Atest)
-A, X, L = test_graphs[0]
+_, X, L, A = test_graphs[0]
 save_graphs(A, X, L, f"data-transfers/synf-seed{args.seed}/Atest-Xtest")
