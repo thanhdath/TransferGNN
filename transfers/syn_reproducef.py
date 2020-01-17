@@ -34,7 +34,7 @@ parser.add_argument("--p", type=int, default=128)
 parser.add_argument("--n", type=int, default=256)
 parser.add_argument('--seed', type=int, default=100)
 parser.add_argument('--kind', default='knn', help="choose from knn sigmoid")
-parser.add_argument("--threshold", type=float, default=0.6)
+parser.add_argument("--k", type=float, default=5)
 parser.add_argument("--n_graphs", type=int, default=256)
 parser.add_argument("--epochs", type=int, default=2000)
 args = parser.parse_args()
@@ -47,9 +47,9 @@ train_size = args.n_graphs - 2
 u = np.random.multivariate_normal(np.zeros((args.p)), np.eye(args.p)/args.p, 1)
 for i in range(args.n_graphs):
     _, X, L = gen_graph(n=args.n, p=args.p, lam=args.lam, mu=args.mu, u=u)
-    edge_index = generate_graph(torch.FloatTensor(X), kind=args.kind, k=5, threshold=args.threshold)
-    A = np.zeros((len(X), len(X)))
-    A[edge_index[:,0], edge_index[:,1]] = 1
+    A = generate_graph(torch.FloatTensor(X), kind=args.kind, k=args.k)
+    onehot_ids = np.eye(len(X))
+    X = np.concatenate([X, onehot_ids], axis=1)
     graphs.append((A, X, L))
 train_graphs = graphs[:train_size]
 test_graphs = graphs[train_size:]
@@ -66,16 +66,20 @@ class ModelSigmoid(nn.Module):
     def __init__(self):
         super().__init__()
         self.W = nn.Sequential(
-            nn.Linear(args.n*(args.n-1)//2, 128, bias=True),
+            nn.Linear(args.n*(args.n-1)//2, 256, bias=True),
             nn.ReLU(),
-            nn.Linear(128, args.n*(args.n-1)//2, bias=True)
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, 256),
+            nn.ReLU(),
+            nn.Linear(256, args.n*(args.n-1)//2, bias=True)
         )
+        # self.W = nn.Linear(args.)
 
     def forward(self, graphs):
         Xs = [torch.FloatTensor(x).to(device) for _,x,_ in graphs]
         # xs = [F.normalize(x, dim=1) for x in Xs]
         xs = [self.W(torch.pdist(d)) for d in Xs]
-        # xs = [(x-x.mean(dim=0))/x.std(dim=0) for x in xs]
         xs = [F.sigmoid(x) for x in xs]
         return xs
 
@@ -169,8 +173,10 @@ for iter in range(args.epochs):
         print(f"Iter {iter} - loss {loss:.4f} - f1 {microstr}")
 
 def save_graphs(A, X, L, outdir):
+    print(f"\n==== Save graphs to {outdir}")
     edgelist = np.argwhere(A > 0)
     dataname = outdir.split("/")[-1]
+    print(f"Number of edges: {A.sum()}")
     if not os.path.isdir(outdir):
         os.makedirs(outdir)
     with open(outdir + f"/{dataname}.txt", "w+") as fp:
@@ -180,8 +186,9 @@ def save_graphs(A, X, L, outdir):
         for i, label in enumerate(L):
             fp.write(f"{i} {label}\n")
     np.savez_compressed(outdir + "/features.npz", features=X)
+    print("=== Done ===\n")
 
-print("save graphs")
+
 # G(Atrain, Xtrain)
 A, X, L = train_graphs[0]
 save_graphs(A, X, L, f"data-transfers/synf-seed{args.seed}/Atrain-Xtrain")
@@ -200,55 +207,14 @@ save_graphs(A, X, L, f"data-transfers/synf-seed{args.seed}/A2-Xtest")
 
 # G(Xtest, KNN(Xtest))
 _, X, L = test_graphs[0]
-edge_index = generate_graph(torch.FloatTensor(X), kind="knn", k=5)
-A = np.zeros((len(X), len(X)))
-A[edge_index[:,0], edge_index[:,1]] = 1
+A = generate_graph(torch.FloatTensor(X), kind="knn", k=args.k)
 save_graphs(A, X, L, f"data-transfers/synf-seed{args.seed}/A3-Xtest")
 
 # G(Xtest, sigmoid(Xtest))
 _, X, L = test_graphs[0]
-edge_index = generate_graph(torch.FloatTensor(X), kind="sigmoid", threshold=args.threshold)
-A = np.zeros((len(X), len(X)))
-A[edge_index[:,0], edge_index[:,1]] = 1
+A = generate_graph(torch.FloatTensor(X), kind="sigmoid", k=args.k)
 save_graphs(A, X, L, f"data-transfers/synf-seed{args.seed}/A4-Xtest")
 
 # G(Xtest, Atest)
 A, X, L = test_graphs[0]
 save_graphs(A, X, L, f"data-transfers/synf-seed{args.seed}/Atest-Xtest")
-
-# gen edgelist, labels, featuresh
-# print("Save graphs")
-# X1 = F1
-# X2 = F2
-# features = X1
-# edgelist = np.argwhere(A1.detach().cpu().numpy() > 0)
-# labels = L1
-
-# outdir = f"data-transfers/synD-seed{args.seed}/0"
-# if not os.path.isdir(outdir):
-#     os.makedirs(outdir)
-
-# with open(outdir + f"/0.txt", "w+") as fp:
-#     for src, trg in edgelist:
-#         fp.write(f"{src} {trg}\n")
-# with open(outdir + "/labels.txt", "w+") as fp:
-#     for i, label in enumerate(labels):
-#         fp.write(f"{i} {label}\n")
-# np.savez_compressed(outdir + "/features.npz", features=features)
-
-# features = X2
-# edgelist = np.argwhere(A2.detach().cpu().numpy() > 0)
-# labels = L2
-
-# outdir = f"data-transfers/synD-seed{args.seed}/1"
-# if not os.path.isdir(outdir):
-#     os.makedirs(outdir)
-
-# with open(outdir + f"/1.txt", "w+") as fp:
-#     for src, trg in edgelist:
-#         fp.write(f"{src} {trg}\n")
-# with open(outdir + "/labels.txt", "w+") as fp:
-#     for i, label in enumerate(labels):
-#         fp.write(f"{i} {label}\n")
-# np.savez_compressed(outdir + "/features.npz", features=features)
-
