@@ -37,6 +37,7 @@ parser.add_argument('--kind', default='knn', help="choose from knn sigmoid")
 parser.add_argument("--k", type=float, default=5)
 parser.add_argument("--n_graphs", type=int, default=256)
 parser.add_argument("--epochs", type=int, default=2000)
+parser.add_argument("--batch-size", type=int, default=32)
 args = parser.parse_args()
 np.random.seed(args.seed)
 torch.manual_seed(args.seed)
@@ -55,6 +56,7 @@ train_graphs = graphs[:train_size]
 test_graphs = graphs[train_size:]
 
 def compute_f1(pA, A):
+    pA = torch.sigmoid(pA)
     pA = pA.detach().cpu().numpy()
     pA[pA >= 0.5] = 1
     pA[pA < 0.5] = 0
@@ -66,21 +68,22 @@ class ModelSigmoid(nn.Module):
     def __init__(self):
         super().__init__()
         self.W = nn.Sequential(
-            nn.Linear(args.n*(args.n-1)//2, 256, bias=True),
-            nn.ReLU(),
-            nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Linear(128, 256),
-            nn.ReLU(),
-            nn.Linear(256, args.n*(args.n-1)//2, bias=True)
+            nn.Linear(args.n*(args.n-1)//2, 64, bias=True),
+            # nn.ReLU(),
+            # nn.ReLU(),
+            # nn.Linear(256, 128),
+            # nn.ReLU(),
+            # nn.Linear(128, 256),
+            # nn.ReLU(),
+            nn.Linear(64, args.n*(args.n-1)//2, bias=True)
         )
         # self.W = nn.Linear(args.)
 
     def forward(self, graphs):
-        Xs = [torch.FloatTensor(x).to(device) for _,x,_ in graphs]
-        # xs = [F.normalize(x, dim=1) for x in Xs]
-        xs = [self.W(torch.pdist(d)) for d in Xs]
-        xs = [F.sigmoid(x) for x in xs]
+        xs = [torch.FloatTensor(x).to(device) for _,x,_ in graphs]
+        xs = [torch.pdist(x) for x in xs]
+        xs = [(x-x.mean())/x.std() for x in xs]
+        xs = [self.W(x) for x in xs]
         return xs
 
 class ModelKNN(nn.Module):
@@ -110,19 +113,6 @@ class ModelKNN(nn.Module):
         xs = [self.W(x.mm(x.t())) for x in xs]
         xs = [self.W2(F.log_softmax(x, dim=1)) for x in xs]
         xs = [F.sigmoid(x) for x in xs]
-        # for x in xs:
-        #     x[np.arange(len(x)), np.arange(len(x))] = 0
-        # halfxs = []
-        # for x in xs:
-        #     inds = torch.triu(torch.ones(len(x),len(x))) 
-        #     inds[np.arange(len(x)), np.arange(len(x))] = 0
-        #     halfxs.append(x[inds == 1])
-        # xs = [x for x in self.Xs]
-        # xs = [x.mm(x.t()) for x in xs]
-        # N = xs[0].shape[0]
-        # xs = [torch.bmm(x.view(N, N, 1), x.view(N, 1, N)) for x in xs]
-
-
         return xs
 
 if args.kind == "knn":
@@ -130,7 +120,8 @@ if args.kind == "knn":
 else:
     model = ModelSigmoid().to(device)
 # loss_fn = nn.MSELoss()
-loss_fn = nn.BCELoss()
+# loss_fn = nn.BCELoss()
+loss_fn = nn.BCEWithLogitsLoss()
 optim = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
 
 halfAs = []
@@ -152,23 +143,20 @@ test_halfAs = halfAs[train_size:]
 for iter in range(args.epochs):
     model.train()
     optim.zero_grad()
-    inds = np.random.permutation(len(train_graphs))[:16]
+    inds = np.random.permutation(len(train_graphs))[:args.batch_size]
     batch_graphs = [train_graphs[x] for x in inds]
-    batch_halfAs = [halfAs[x] for x in inds]
+    batch_halfAs = [train_halfAs[x] for x in inds]
 
     pred_As = model(batch_graphs)
-    loss = 0
-    for pred_A, halfA in zip(pred_As, batch_halfAs):
-        loss += loss_fn(pred_A, halfA)
-    loss = loss / len(pred_As)
+    loss = loss_fn(torch.cat(pred_As), torch.cat(batch_halfAs))
     loss.backward()
     optim.step()
     if iter % 50 == 0:
         # microf11 = compute_f1(pred_As[0], halfAs[0])
         # microf12 = compute_f1(pred_As[1], halfAs[1])
-        microfs = [compute_f1(pred_A, halfA) for predA, halfA in zip(pred_As, batch_halfAs)]
+        microfs = [compute_f1(predA, halfA) for predA, halfA in zip(pred_As, batch_halfAs)]
         pred_As = model(test_graphs)
-        microfs += [compute_f1(pred_A, halfA) for predA, halfA in zip(pred_As, test_halfAs)]
+        microfs += [compute_f1(predA, halfA) for predA, halfA in zip(pred_As, test_halfAs)]
         microstr = " ".join([f"{f1:.2f}" for f1 in microfs])
         print(f"Iter {iter} - loss {loss:.4f} - f1 {microstr}")
 
