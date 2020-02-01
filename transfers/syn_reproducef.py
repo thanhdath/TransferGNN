@@ -38,6 +38,7 @@ parser.add_argument("--k", type=float, default=5)
 parser.add_argument("--n_graphs", type=int, default=256)
 parser.add_argument("--epochs", type=int, default=2000)
 parser.add_argument("--batch-size", type=int, default=32)
+parser.add_argument("--beta", type=float, default=0.4)
 args = parser.parse_args()
 np.random.seed(args.seed)
 torch.manual_seed(args.seed)
@@ -64,34 +65,64 @@ def compute_f1(pA, A):
     f1 = f1_score(A, pA, average="macro")
     return f1
 
+# class ModelSigmoid(nn.Module):
+#     def __init__(self):
+#         super().__init__()
+#         self.W = nn.Sequential(
+#             nn.Linear(args.n*(args.n-1)//2, 128, bias=True),
+#             # nn.ReLU(),
+#             nn.ReLU(),
+#             nn.Linear(128, 128),
+#             nn.ReLU(),
+#             nn.Linear(128, 128),
+#             nn.ReLU(),
+#             nn.Linear(128, args.n*(args.n-1)//2, bias=True)
+#         )
+#         # self.W = nn.Linear(args.)
+
+#     def forward(self, graphs):
+#         xs = [torch.FloatTensor(x).to(device) for _,x,_,_ in graphs]
+#         xs = [torch.pdist(x) for x in xs]
+#         # xs = [(x-x.mean())/x.std() for x in xs]
+#         xs = [self.W(x) for x in xs]
+#         # xs = [torch.sigmoid(x) for x in xs]
+#         # xs = [(x - 0.5)*2 for x in xs]
+#         return xs
+
 class ModelSigmoid(nn.Module):
     def __init__(self):
         super().__init__()
+        d = args.n*(args.n-1)//2
+        self.d = d
         self.W = nn.Sequential(
-            nn.Linear(args.n*(args.n-1)//2, 64, bias=True),
-            # nn.ReLU(),
-            # nn.ReLU(),
-            # nn.Linear(256, 128),
-            # nn.ReLU(),
-            # nn.Linear(128, 256),
-            # nn.ReLU(),
-            nn.Linear(64, args.n*(args.n-1)//2, bias=True)
+            nn.Conv1d(1, d*2, d),
+#             nn.ReLU(),
+#             nn.Conv1d(d*2, d*4, d//2),
+#             nn.ReLU(),
+            nn.ConvTranspose1d(d*2, d, 1),
+#             nn.ReLU(),
+#             nn.ConvTranspose1d(d*2, d, 1)
+#             nn.ReLU()
         )
-        # self.W = nn.Linear(args.)
-
+    def forward_shuffle(self, graphs, halfAs):
+        inds = np.random.permutation(len(graphs))
+        graphs = [graphs[x] for x in inds]
+        halfAs = [halfAs[x] for x in inds]
+        return self.forward(graphs), torch.stack(halfAs,dim=0)
     def forward(self, graphs):
         xs = [torch.FloatTensor(x).to(device) for _,x,_,_ in graphs]
         xs = [torch.pdist(x) for x in xs]
-        xs = [(x-x.mean())/x.std() for x in xs]
-        xs = [self.W(x) for x in xs]
+        xs = torch.stack(xs, dim=0).view(-1, 1, self.d)
+        xs = self.W(xs)
+#         print(xs.shape)
+        xs = xs.view(-1, self.d)
+#         print(xs)
         return xs
 
 class ModelKNN(nn.Module):
     def __init__(self):
         super().__init__()
-        self.Xs = [
-            torch.FloatTensor(x).to(device) for _,x,_ in train_graphs
-        ]
+        self.Xs = [torch.FloatTensor(x).to(device) for _,x,_ in train_graphs]
         n_nodes, fdim = self.Xs[0].shape
         self.W0 = nn.Sequential(
             nn.Linear(fdim, fdim*2),
@@ -115,13 +146,18 @@ class ModelKNN(nn.Module):
         xs = [F.sigmoid(x) for x in xs]
         return xs
 
+def weighted_cross_entropy_with_logits(logits, targets, beta):
+    l=logits
+    t=targets
+    loss= -(beta*t*torch.log(torch.sigmoid(l)+1e-10) + (1-beta)*(1-t)*torch.log(torch.sigmoid(1-l)+1e-10))
+    return loss
 if args.kind == "knn":
     model = ModelKNN().to(device)
 else:
     model = ModelSigmoid().to(device)
 # loss_fn = nn.MSELoss()
 # loss_fn = nn.BCELoss()
-loss_fn = nn.BCEWithLogitsLoss()
+# loss_fn = nn.BCEWithLogitsLoss()
 optim = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
 
 halfAs = []
@@ -147,15 +183,16 @@ for iter in range(args.epochs):
     batch_graphs = [train_graphs[x] for x in inds]
     batch_halfAs = [train_halfAs[x] for x in inds]
 
-    pred_As = model(batch_graphs)
-    loss = loss_fn(torch.cat(pred_As), torch.cat(batch_halfAs))
+    pred_As, batch_halfAs = model.forward_shuffle(batch_graphs, batch_halfAs)
+    assert torch.isnan(pred_As).sum() == 0 or torch.isinf(pred_As).sum() == 0, "predAs nan inf"
+    loss = weighted_cross_entropy_with_logits(pred_As, batch_halfAs, beta=args.beta).mean()
+    assert not torch.isnan(loss) or not torch.isinf(loss),  "loss nan"
     loss.backward()
     optim.step()
-    if iter % 50 == 0:
-        # microf11 = compute_f1(pred_As[0], halfAs[0])
-        # microf12 = compute_f1(pred_As[1], halfAs[1])
-        microfs = [compute_f1(predA, halfA) for predA, halfA in zip(pred_As, batch_halfAs)]
+    if iter % 100 == 0:
+        microfs = [compute_f1(predA, halfA) for predA, halfA in zip(pred_As[:5], batch_halfAs[:5])]
         pred_As = model(test_graphs)
+        print(pred_As[0])
         microfs += [compute_f1(predA, halfA) for predA, halfA in zip(pred_As, test_halfAs)]
         microstr = " ".join([f"{f1:.2f}" for f1 in microfs])
         print(f"Iter {iter} - loss {loss:.4f} - f1 {microstr}")
@@ -199,8 +236,8 @@ A = generate_graph(torch.FloatTensor(X), kind="knn", k=args.k)
 save_graphs(A, X, L, f"data-transfers/synf-seed{args.seed}/A3-Xtest")
 
 # G(Xtest, sigmoid(Xtest))
-_, X, L, _ = test_graphs[0]
-A = generate_graph(torch.FloatTensor(X), kind="sigmoid", k=args.k)
+A, X, L, _ = test_graphs[0]
+# A = generate_graph(torch.FloatTensor(X), kind="sigmoid", k=args.k)
 save_graphs(A, X, L, f"data-transfers/synf-seed{args.seed}/A4-Xtest")
 
 # G(Xtest, Atest)
