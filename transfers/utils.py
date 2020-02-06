@@ -47,7 +47,7 @@ def generate_graph(features, kind="sigmoid", k=5):
     print(f"Generate graph using {kind}")
     if kind == "sigmoid":
         # print("Scores after sigmoid")
-        scores = torch.sigmoid(scores)
+        scores = 1 - torch.sigmoid(scores)
         # find index to cut 
         n_edges = int((k*N - N)/2)
         threshold = scores[torch.argsort(-scores)[n_edges]]
@@ -71,11 +71,11 @@ def generate_graph(features, kind="sigmoid", k=5):
         if len(scores_matrix) > 60000: # avoid memory error
             edge_index = []
             for i, node_scores in enumerate(scores_matrix):
-                candidate_nodes = np.argsort(-node_scores)[:k]
+                candidate_nodes = np.argsort(node_scores)[:k]
                 edge_index += [[i, node] for node in candidate_nodes]
             edge_index = np.array(edge_index, dtype=np.int32)
         else:
-            sorted_scores = np.argsort(-scores_matrix, axis=1)[:, :k]
+            sorted_scores = np.argsort(scores_matrix, axis=1)[:, :k]
             edge_index = np.zeros((len(scores_matrix)*k, 2), dtype=np.int32)
             N = len(scores_matrix)
             for i in range(k):

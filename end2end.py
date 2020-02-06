@@ -207,41 +207,35 @@ for iter in range(10000):
             fs_gnn_str = " ".join([f"{f1:.2f}" for f1 in fs_gnn])
             print(f"Iter {iter} - loss {loss:.10f} - f1 {microstr} - gnn {fs_gnn_str}")
 
-# def save_graphs(A, X, L, outdir):
-#     print(f"\n==== Save graphs to {outdir}")
-#     edgelist = np.argwhere(A > 0)
-#     dataname = outdir.split("/")[-1]
-#     print(f"Number of edges: {A.sum()}")
-#     if not os.path.isdir(outdir):
-#         os.makedirs(outdir)
-#     with open(outdir + f"/{dataname}.txt", "w+") as fp:
-#         for src, trg in edgelist:
-#             fp.write(f"{src} {trg}\n")
-#     with open(outdir + "/labels.txt", "w+") as fp:
-#         for i, label in enumerate(L):
-#             fp.write(f"{i} {label}\n")
-#     np.savez_compressed(outdir + "/features.npz", features=X)
-#     print("=== Done ===\n")
-# def halfA_to_A(halfA):
-#     A = np.zeros((len(X), len(X)))
-#     inds = torch.triu(torch.ones(len(A),len(A))) 
-#     inds[np.arange(len(A)), np.arange(len(A))] = 0
-#     A[inds == 1] = halfA
-#     return A
-# # G(Atrain, Xtrain)
-# model.eval()
-# halfA, X, L, _ = train_graphs[0]
-# A = halfA_to_A(halfA.cpu().numpy())
-# save_graphs(A, X, L, f"data-transfers/synf-seed{args.seed}/Atrain-Xtrain-dat")
+def save_graphs(A, X, L, outdir):
+    print(f"\n==== Save graphs to {outdir}")
+    edgelist = np.argwhere(A > 0)
+    dataname = outdir.split("/")[-1]
+    print(f"Number of edges: {A.sum()}")
+    if not os.path.isdir(outdir):
+        os.makedirs(outdir)
+    with open(outdir + f"/{dataname}.txt", "w+") as fp:
+        for src, trg in edgelist:
+            fp.write(f"{src} {trg}\n")
+    with open(outdir + "/labels.txt", "w+") as fp:
+        for i, label in enumerate(L):
+            fp.write(f"{i} {label}\n")
+    np.savez_compressed(outdir + "/features.npz", features=X)
+    print("=== Done ===\n")
+def halfA_to_A(halfA):
+    A = np.zeros((len(X), len(X)))
+    inds = torch.triu(torch.ones(len(A),len(A))) 
+    inds[np.arange(len(A)), np.arange(len(A))] = 0
+    A[inds == 1] = halfA
+    return A
+# G(Atrain, Xtrain)
+model.eval()
+halfA, X, L, _ = train_graphs[0]
+A = halfA_to_A(halfA.cpu().numpy())
+save_graphs(A, X, L, f"data-transfers/synf-seed{args.seed}/Atrain-Xtrain-dat")
 
-# _, X, L, _ = test_graphs[0]
-# with torch.no_grad():
-#     halfA = model.predict_adj([X])[0]
-# A = halfA_to_A(halfA.cpu().numpy())
-# save_graphs(A, X, L, f"data-transfers/synf-seed{args.seed}/A2-Xtest-dat")
-
-# pip install --verbose --no-cache-dir torch-scatter
-# pip install --verbose --no-cache-dir torch-sparse
-# pip install --verbose --no-cache-dir torch-cluster
-# pip install --verbose --no-cache-dir torch-spline-conv (optional)
-# pip install torch-geometric
+_, X, L, _ = test_graphs[0]
+with torch.no_grad():
+    halfA = model.predict_adj([X])[0]
+A = halfA_to_A(halfA.cpu().numpy())
+save_graphs(A, X, L, f"data-transfers/synf-seed{args.seed}/A2-Xtest-dat")

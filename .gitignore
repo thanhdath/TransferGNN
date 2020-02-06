@@ -2,3 +2,6 @@ corpora
 model
 __pycache__
 temp
+data/
+data-transfers/
+runs/

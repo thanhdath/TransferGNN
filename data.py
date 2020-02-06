@@ -83,16 +83,20 @@ def load_graph(adj_file, feature_file, label_file, multiclass=None):
     edge_index = torch.LongTensor(edge_index.T)
 
     n_nodes = len(nodes)
-    n_train = int(0.8*n_nodes)
+    n_train = int(0.5*n_nodes)
     # n_val = int(0.2*n_nodes)
     n_val = n_nodes - n_train
 
     train_mask = np.zeros((n_nodes,))
     val_mask = np.zeros((n_nodes,))
     test_mask = np.zeros((n_nodes,))
-    train_mask[:n_train] = 1
-    val_mask[n_train:n_train+n_val] = 1
-    test_mask[n_train+n_val:] = 1
+    inds = np.random.permutation(n_nodes)
+    train_inds = inds[:n_train]
+    val_inds = inds[n_train:n_train+n_val]
+    test_inds = inds[n_train+n_val:]
+    train_mask[train_inds] = 1
+    val_mask[val_inds] = 1
+    test_mask[test_inds] = 1
 
     train_mask = torch.tensor(train_mask, dtype=torch.uint8)
     val_mask = torch.tensor(val_mask, dtype=torch.uint8)
