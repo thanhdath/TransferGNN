@@ -25,6 +25,8 @@ import torch.nn.functional as F
 import torch.nn as nn
 import sys
 import argparse 
+import random
+import string
 from transfers.utils import gen_graph, generate_graph
 
 parser = argparse.ArgumentParser()
@@ -45,7 +47,7 @@ torch.manual_seed(args.seed)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 graphs = []
-train_size = args.n_graphs - 2
+train_size = args.n_graphs - 5
 u = np.random.multivariate_normal(np.zeros((args.p)), np.eye(args.p)/args.p, 1)
 for i in range(args.n_graphs):
     Asyn, X, L = gen_graph(n=args.n, p=args.p, lam=args.lam, mu=args.mu, u=u)
@@ -56,67 +58,89 @@ for i in range(args.n_graphs):
 train_graphs = graphs[:train_size]
 test_graphs = graphs[train_size:]
 
-def compute_f1(pA, A):
-    pA = torch.sigmoid(pA)
-    pA = pA.detach().cpu().numpy()
+def init_weights(m):
+    if type(m) == nn.Linear or type(m) == nn.Conv1d:
+        torch.nn.init.xavier_uniform_(m.weight)
+        m.bias.data.fill_(0.01)
+
+def f1_adj(pA, A):
     pA[pA >= 0.5] = 1
     pA[pA < 0.5] = 0
-    A = A.cpu().numpy()
     f1 = f1_score(A, pA, average="macro")
     return f1
 
-# class ModelSigmoid(nn.Module):
-#     def __init__(self):
-#         super().__init__()
-#         self.W = nn.Sequential(
-#             nn.Linear(args.n*(args.n-1)//2, 128, bias=True),
-#             # nn.ReLU(),
-#             nn.ReLU(),
-#             nn.Linear(128, 128),
-#             nn.ReLU(),
-#             nn.Linear(128, 128),
-#             nn.ReLU(),
-#             nn.Linear(128, args.n*(args.n-1)//2, bias=True)
-#         )
-#         # self.W = nn.Linear(args.)
+def f1_gnn(ypred, ytrue):
+    ypred = ypred.detach().cpu().numpy().astype(np.int)
+    ypred = np.argmax(ypred, axis=1)
+    ytrue = ytrue.cpu().numpy().astype(np.int)
+    f1 = f1_score(ytrue, ypred, average="micro")
+    return f1
 
-#     def forward(self, graphs):
-#         xs = [torch.FloatTensor(x).to(device) for _,x,_,_ in graphs]
-#         xs = [torch.pdist(x) for x in xs]
-#         # xs = [(x-x.mean())/x.std() for x in xs]
-#         xs = [self.W(x) for x in xs]
-#         # xs = [torch.sigmoid(x) for x in xs]
-#         # xs = [(x - 0.5)*2 for x in xs]
-#         return xs
+def batch_pdist_to_adjs(batch_halfAs):
+    batch_adjs = torch.zeros((len(batch_halfAs), args.n, args.n)).to(device)
+    for i,halfA in enumerate(batch_halfAs):
+        inds = torch.triu(torch.ones(args.n, args.n)) 
+        inds[torch.arange(args.n), torch.arange(args.n)] = 0
+        batch_adjs[i][inds == 1] = halfA
+        batch_adjs[i] = batch_adjs[i].T + batch_adjs[i]
+    return batch_adjs
+
+def halfA_to_A(halfA):
+    A = np.zeros((len(X), len(X)))
+    inds = torch.triu(torch.ones(len(A),len(A))) 
+    inds[np.arange(len(A)), np.arange(len(A))] = 0
+    A[inds == 1] = halfA
+    A = A + A.T
+    A[np.arange(len(A)), np.arange(len(A))] = 1
+    return A
+
+def A_to_halfA(A):
+    inds = torch.triu(torch.ones(len(A),len(A))) 
+    inds[np.arange(len(A)), np.arange(len(A))] = 0
+    halfA = A[inds == 1]
+    return halfA
 
 class ModelSigmoid(nn.Module):
     def __init__(self):
         super().__init__()
         d = args.n*(args.n-1)//2
         self.d = d
-        self.W = nn.Sequential(
-            nn.Conv1d(1, d*2, d),
-#             nn.ReLU(),
-#             nn.Conv1d(d*2, d*4, d//2),
-#             nn.ReLU(),
-            nn.ConvTranspose1d(d*2, d, 1),
-#             nn.ReLU(),
-#             nn.ConvTranspose1d(d*2, d, 1)
-#             nn.ReLU()
-        )
-    def forward_shuffle(self, graphs, halfAs):
-        inds = np.random.permutation(len(graphs))
-        graphs = [graphs[x] for x in inds]
-        halfAs = [halfAs[x] for x in inds]
-        return self.forward(graphs), torch.stack(halfAs,dim=0)
-    def forward(self, graphs):
-        xs = [torch.FloatTensor(x).to(device) for _,x,_,_ in graphs]
+        name = ''.join([random.choice(string.ascii_letters + string.digits) for n in range(4)])
+        layers = [
+            # (f'{name}-dropout1', nn.Dropout(0.05)),
+            (f'{name}-linear1', nn.Linear(d, d*2)),
+            (f'{name}-relu1', nn.LeakyReLU(0.2)),
+#             (f'{name}-linear2', nn.Linear(d*2, d*2)),
+#             (f'{name}-relu2', nn.LeakyReLU(0.2)),
+#             (f'{name}-linear3', nn.Linear(d*2, d*2)),
+#             (f'{name}-relu3', nn.LeakyReLU(0.2)),
+            (f'{name}-linear4', nn.Linear(d*2, d)),
+        ]
+        self.W = nn.Sequential()
+        [self.W.add_module(n, l) for n, l in layers]
+        self.W.apply(init_weights)
+    def forward_shuffle(self, Xs, As):
+        """
+        Xs: list of numpy array
+        As: list of numpy array
+        """
+        inds = [np.random.permutation(args.n) for _ in range(len(Xs))]
+        Xs = [X[x] for X, x in zip(Xs, inds)]
+        As = [A[x][:,x] for A, x in zip(As,inds)]
+        halfAs = [torch.FloatTensor(A_to_halfA(A)).to(device) for A in As]
+        return self.forward(Xs), torch.stack(halfAs, dim=0)
+    def forward(self, Xs):
+        xs = [torch.FloatTensor(x).to(device) for x in Xs]
         xs = [torch.pdist(x) for x in xs]
-        xs = torch.stack(xs, dim=0).view(-1, 1, self.d)
+        xs = torch.stack(xs, dim=0)
         xs = self.W(xs)
-#         print(xs.shape)
-        xs = xs.view(-1, self.d)
-#         print(xs)
+        xs = 1 - torch.sigmoid(xs) # lower the distance, higher probabilitity of edge
+        return xs
+    def predict_adj(self, Xs, absolute=True):
+        xs = self.forward(Xs)
+        if absolute:
+            xs[xs < 0.5] = 0
+            xs[xs >= 0.5] = 1
         return xs
 
 class ModelKNN(nn.Module):
@@ -155,47 +179,34 @@ if args.kind == "knn":
     model = ModelKNN().to(device)
 else:
     model = ModelSigmoid().to(device)
-# loss_fn = nn.MSELoss()
-# loss_fn = nn.BCELoss()
-# loss_fn = nn.BCEWithLogitsLoss()
+print(model)
+loss_fn = nn.BCELoss()
 optim = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
-
-halfAs = []
-if args.kind == "sigmoid":
-    for A,_,_,_ in graphs:
-        inds = torch.triu(torch.ones(len(A),len(A))) 
-        inds[np.arange(len(A)), np.arange(len(A))] = 0
-        halfA = torch.FloatTensor(A[inds == 1]).to(device)
-        halfAs.append(halfA)
-elif args.kind == "knn":
-    halfAs = []
-    for A,_,_,_ in graphs:
-        halfA = A.copy()
-        # halfA[np.arange(len(A)), np.arange(len(A))] = 0
-        halfAs.append(torch.FloatTensor(halfA).to(device))
-train_halfAs = halfAs[:train_size]
-test_halfAs = halfAs[train_size:]
-
-for iter in range(args.epochs):
+for iter in range(args.epochs):   
     model.train()
     optim.zero_grad()
     inds = np.random.permutation(len(train_graphs))[:args.batch_size]
-    batch_graphs = [train_graphs[x] for x in inds]
-    batch_halfAs = [train_halfAs[x] for x in inds]
-
-    pred_As, batch_halfAs = model.forward_shuffle(batch_graphs, batch_halfAs)
-    assert torch.isnan(pred_As).sum() == 0 or torch.isinf(pred_As).sum() == 0, "predAs nan inf"
-    loss = weighted_cross_entropy_with_logits(pred_As, batch_halfAs, beta=args.beta).mean()
-    assert not torch.isnan(loss) or not torch.isinf(loss),  "loss nan"
+    batch_xs = [train_graphs[x][1] for x in inds]
+    batch_As = [train_graphs[x][0] for x in inds]
+    for i in range(len(batch_xs)):
+        shuffle_inds = np.random.permutation(args.n)
+        batch_xs[i] = batch_xs[i][shuffle_inds]
+        batch_As[i] = batch_As[i][shuffle_inds][:, shuffle_inds]
+    pred_As = model.forward(batch_xs)
+    batch_halfAs = torch.stack([torch.FloatTensor(A_to_halfA(A)).to(device) for A in batch_As], axis=0)
+    loss = loss_fn(pred_As, batch_halfAs)
     loss.backward()
     optim.step()
-    if iter % 100 == 0:
-        microfs = [compute_f1(predA, halfA) for predA, halfA in zip(pred_As[:5], batch_halfAs[:5])]
-        pred_As = model(test_graphs)
-        print(pred_As[0])
-        microfs += [compute_f1(predA, halfA) for predA, halfA in zip(pred_As, test_halfAs)]
-        microstr = " ".join([f"{f1:.2f}" for f1 in microfs])
-        print(f"Iter {iter} - loss {loss:.4f} - f1 {microstr}")
+    
+    if iter % 100 == 0 or iter == 1:
+        model.eval()
+        with torch.no_grad():
+            batch_xs = batch_xs[:5] + [x[1] for x in test_graphs]
+            batch_halfAs = [x.cpu().numpy() for x in batch_halfAs[:5]] + [A_to_halfA(x[0]) for x in test_graphs]
+            pred_As = model.predict_adj(batch_xs, absolute=True).cpu().numpy()
+            microfs = [f1_adj(predA, halfA) for predA, halfA in zip(pred_As, batch_halfAs)]
+            microstr = " ".join([f"{f1:.2f}" for f1 in microfs])
+            print(f"Iter {iter} - loss {loss:.10f} - f1 {microstr}")
 
 def save_graphs(A, X, L, outdir):
     print(f"\n==== Save graphs to {outdir}")
@@ -217,10 +228,10 @@ def save_graphs(A, X, L, outdir):
 # G(Atrain, Xtrain)
 A, X, L, _ = train_graphs[0]
 save_graphs(A, X, L, f"data-transfers/synf-seed{args.seed}/Atrain-Xtrain")
-# G(Xtest, f(Xtest))
 
+# G(Xtest, f(Xtest))
 _, X, L, _ = test_graphs[0]
-pdistA = model([test_graphs[0]])[0].detach().cpu().numpy()
+pdistA = model([X])[0].detach().cpu().numpy()
 A = np.zeros((len(X), len(X)))
 inds = torch.triu(torch.ones(len(A),len(A))) 
 inds[np.arange(len(A)), np.arange(len(A))] = 0

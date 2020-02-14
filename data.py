@@ -23,7 +23,7 @@ def load_edgelist(adj_file):
             elms = re.split("[,\s]+", line)
             elms = [x for x in elms if len(x) > 0]
             edgelist.append(elms)
-    edgelist = np.array(edgelist, dtype=int)
+    edgelist = np.array(edgelist, dtype=float)
     if edgelist.shape[0] == edgelist.shape[1]:
         # adj
         nodes = np.arange(len(edgelist))
@@ -33,6 +33,7 @@ def load_edgelist(adj_file):
         edgelist[:,:2] = edge_index
         edgelist[:,2] = edge_weight
     else:
+        edgelist = edgelist.astype(np.int)
         nodes = np.arange(edgelist[:,:2].max() + 1)
     if edgelist.shape[1] == 2:
         edges = np.zeros((len(edgelist), 3))
