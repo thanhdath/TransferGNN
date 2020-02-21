@@ -22,11 +22,12 @@ import torch
 import torch.nn.functional as F
 import torch.nn as nn
 import sys
-import argparse 
+import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed', type=int, default=100)
 args = parser.parse_args()
+
 
 def collate(sample):
     graphs, feats, labels = map(list, zip(*sample))
@@ -36,8 +37,11 @@ def collate(sample):
     return graph, feats, labels
 
 
-train_dataset = LegacyPPIDataset(mode="test")
+train_dataset = LegacyPPIDataset(mode="train")
+train_dataset = LegacyPPIDataset(mode="train")
+
 ids = np.random.permutation(len(train_dataset))
+nnodes = [x[0].number_of_nodes() for x in train_dataset]
 ids = [i for i in ids if train_dataset[i][0].number_of_nodes() < 15000000]
 G1, F1, L1_ori = train_dataset[ids[0]]
 G2, F2, L2_ori = train_dataset[ids[1]]
@@ -49,6 +53,7 @@ print(A1.shape, A2.shape)
 A1 = torch.FloatTensor(A1).cuda()
 A2 = torch.FloatTensor(A2).cuda()
 
+
 def compute_f1(pA, A):
     pA = pA.detach().cpu().numpy()
     pA[pA >= 0.5] = 1
@@ -56,6 +61,7 @@ def compute_f1(pA, A):
     A = A.cpu().numpy()
     f1 = f1_score(A, pA, average="micro")
     return f1
+
 
 class Model(nn.Module):
     def __init__(self):
@@ -136,4 +142,3 @@ for selected_label in range(121):
         for i, label in enumerate(labels):
             fp.write(f"{i} {label}\n")
     np.savez_compressed(outdir + "/features.npz", features=features)
-

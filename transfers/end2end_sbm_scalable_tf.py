@@ -1,6 +1,7 @@
 # reproduce f from knn or sigmoid
 
 # -*- coding: utf-8 -*-
+from itertools import chain
 import os
 from sklearn.metrics import f1_score
 """ppi.ipynb
@@ -25,7 +26,7 @@ from sage import SAGECompletedGraph
 import time
 import random
 import string
-
+# import tensorflow as tf
 torch.backends.cudnn.deterministic = True
 
 parser = argparse.ArgumentParser()
@@ -53,6 +54,15 @@ def init_weights(m):
     if type(m) == nn.Linear or type(m) == nn.Conv1d:
         torch.nn.init.xavier_uniform_(m.weight)
         m.bias.data.fill_(0.01)
+
+
+# class Model():
+#     def __init__(self, n):
+#         self.n = n
+#         self.d = self.n*(self.n-1) // 2
+
+#     def build_graph(self):
+#         self.input = tf.Place
 
 
 class GNN(torch.nn.Module):
@@ -267,14 +277,14 @@ for i in range(args.n_graphs):
     graphs.append((None, X, L, Asbm))
 train_graphs = graphs[:train_size]
 test_graphs = graphs[train_size:]
-print(f"Number of edges: min {np.min(n_edges)} - max {np.max(n_edges)} - ave {np.mean(n_edges):.2f} - ratio {np.mean(n_edges)/(args.n**2):.2f}")
+print(
+    f"Number of edges: min {np.min(n_edges)} - max {np.max(n_edges)} - ave {np.mean(n_edges):.2f} - ratio {np.mean(n_edges)/(args.n**2):.2f}")
 print("Auto adjust k")
 ave_degree = np.mean(n_edges) / args.n
 args.k = int(ave_degree)
 print(f"Select k = {args.k}")
 
 
-from itertools import chain
 model1 = ModelSigmoidScalable().to(device)  # function F
 print(model1)
 model_gnn = GNN(args.p, args.p * 2, 2).to(device)  # use to learn model1
@@ -346,6 +356,7 @@ def loss_shuffle_features(xs):
 # => làm sao để mỗi bộ feature cho ra 1 graph khác nhau
 # shuffle features => still generate a particular graph => model1 do not care about the order of features
 # shuffle features - should generate graph of equivalent nodes order.
+
 
 # learn model1 | end2end model
 loss_gnns = []
@@ -453,6 +464,7 @@ def save_graphs(A, X, L, outdir):
             fp.write(f"{i} {label}\n")
     np.savez_compressed(outdir + "/features.npz", features=X)
     print("=== Done ===\n")
+
 
 # G(Atrain, Xtrain), Atrain = Asbm, Xtrain = Xsbm
 Af, X, L, Asbm = train_graphs[0]

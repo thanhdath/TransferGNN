@@ -1,6 +1,6 @@
 export CUDA_VISIBLE_DEVICES=1
 
-for seed in $(seq 100 109)
+for seed in $(seq 100 100)
 do
     rm -r model/
     echo $seed
