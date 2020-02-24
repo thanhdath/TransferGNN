@@ -22,7 +22,7 @@ torch.backends.cudnn.deterministic = True
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--lam', type=float, default=1.1)
-parser.add_argument('--mu', type=int, default=100)
+parser.add_argument('--mu', type=float, default=100)
 parser.add_argument('--p', type=int, default=8)
 parser.add_argument('--n', type=int, default=32)
 parser.add_argument('--seed', type=int, default=100)
@@ -198,9 +198,10 @@ print(model1)
 print('Number of parameters: ', count_number_of_parameters(model1))
 model_gnn = GNN(args.p, args.p*2, 2).to(device)  # use to learn model1
 print(model_gnn)
-# optim = torch.optim.Adam(chain(model1.parameters(), model_gnn.parameters()), lr=0.01) # weight_decay=5e-4
-# discriminator = Discriminator().to(device)
-# print(discriminator)
+optim = torch.optim.Adam(
+    chain(model1.parameters(), model_gnn.parameters()), lr=0.01)  # weight_decay=5e-4
+discriminator = Discriminator().to(device)
+print(discriminator)
 
 optim = torch.optim.Adam(
     [
@@ -209,7 +210,7 @@ optim = torch.optim.Adam(
         # {'params': discriminator.parameters(), 'lr': 5e-4}
     ],
     lr=0.01
-) 
+)
 
 
 def loss_adj_fn(predA, A, dis_smooth=0.2):
@@ -278,9 +279,9 @@ for iter in range(args.epochs):
     # A to graphsage
     outputs = model_gnn(batch_xs, pred_adjs)
     loss_gnn = F.nll_loss(outputs.view(-1, 2), batch_ys.view(-1))
-    loss_distance = loss_reverse_distance(pred_As)
+    loss_distance = loss_reverse_distance(pred_As)  # prevent Adj -> I
     loss_shuffle = loss_shuffle_features(batch_xs[:4])
-    loss = loss_adj + loss_gnn  # + loss_shuffle*0.1
+    loss = loss_adj + loss_gnn + loss_distance  # + loss_shuffle*0.1
 #     loss = loss_gnn + loss_adj
 
     loss.backward()
@@ -307,6 +308,7 @@ for iter in range(args.epochs):
             batch_xs = torch.FloatTensor(batch_xs).to(device)
             batch_ys = torch.LongTensor(batch_ys).to(device)
             pred_adjs = batch_pdist_to_adjs(pred_As)
+            print(pred_adjs.sum() / len(pred_adjs))
 #             print(pred_adjs[0])
             outputs = model_gnn(batch_xs, pred_adjs)
             fs_gnn = [f1_gnn(output, y) for output, y in zip(outputs, batch_ys)]
@@ -332,7 +334,13 @@ train_graphs = graphs[:train_size]
 test_graphs = graphs[train_size:]
 
 # evaluate MMD
+
+
 def evaluate_mmd(graphs_real, graphsF):
+    # convert graph to networkx
+    import networkx as nx  # networkx==1.11
+    graphs_real = [nx.from_numpy_matrix(x) for x in graphs_real]
+    graphsF = [nx.from_numpy_matrix(x) for x in graphsF]
     mmd_degree = eval.stats.degree_stats(graphs_real, graphsF)
     mmd_clustering = eval.stats.clustering_stats(graphs_real, graphsF)
     try:
@@ -343,10 +351,12 @@ def evaluate_mmd(graphs_real, graphsF):
     print(f'MMD clustering: {mmd_clustering:.3f}')
     print(f'MMD 4orbits: {mmd_4orbits:.3f}')
 
+
 evaluate_mmd(
     [x[-1] for x in test_graphs],
     [x[0] for x in test_graphs]
 )
+
 
 def save_graphs(A, X, L, outdir):
     print(f"\n==== Save graphs to {outdir}")
@@ -364,9 +374,11 @@ def save_graphs(A, X, L, outdir):
 # G(Atrain, Xtrain), Atrain = Asbm, Xtrain = Xsbm
 Af, X, L, Asbm = train_graphs[0]
 print('Atrain-Xtrain')
+print(f"Number of edges: {Asbm.sum()}")
 save_graphs(Asbm, X, L, f"data-transfers/synf-sbm-seed{args.seed}/Atrain-Xtrain")
 
 print('AtrainF-Xtrain')
+print(f"Number of edges: {Af.sum()}")
 save_graphs(Af, X, L, f"data-transfers/synf-sbm-seed{args.seed}/AtrainF-Xtrain")
 
 print('A2-Xtest')  # A2 = Af
@@ -386,16 +398,3 @@ save_graphs(A4, X, L, f"data-transfers/synf-sbm-seed{args.seed}/A4-Xtest")
 print('Atest-Xtest')  # A4 = Sigmoid(X)
 _, X, L, Asbm = test_graphs[0]
 save_graphs(Asbm, X, L, f"data-transfers/synf-sbm-seed{args.seed}/Atest-Xtest")
-
-
-# ModelSigmoid(
-#     (W): Sequential(
-#         (kWmT-bn1): BatchNorm1d(8128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
-#         (kWmT-linear1): Linear(in_features=8128, out_features=16256, bias=True)
-#         (kWmT-relu1): LeakyReLU(negative_slope=0.2)
-#         (kWmT-linear4): Linear(in_features=16256, out_features=8128, bias=True)
-#     )
-# )
-
-
-# 256: billions of parameters
