@@ -12,6 +12,7 @@ from sklearn.metrics import f1_score
 import numpy as np
 #import matplotlib.pyplot as plt
 import tensorboardX
+from sklearn.metrics import classification_report
 # from sage import SAGEConv
 
 parser = argparse.ArgumentParser()
@@ -200,3 +201,13 @@ for epoch in range(1, epochs):
 # torch.save(model.state_dict(), model_name)
 print("Best val acc: {:.3f}".format(best_val_acc))
 print("Model has been saved to", model_name)
+
+model.eval()
+logits = model()
+with torch.no_grad():
+    mask = data['val_mask']
+    preds = logits[mask]
+    preds = torch.sigmoid(preds).cpu().numpy()
+    preds[preds >= 0.5] = 1
+    preds[preds < 0.5] = 0
+    print(classification_report(data.y[mask].cpu().numpy(), preds))

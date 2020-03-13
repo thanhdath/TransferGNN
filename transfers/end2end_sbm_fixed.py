@@ -266,7 +266,7 @@ for iter in range(args.epochs):
     batch_as = [train_graphs[x][3] for x in inds]
     pred_As, _, _ = get_pred_As(batch_xs, batch_ys, batch_as, training=False)
 
-    print("=== Start learn GNN")
+    # print("=== Start learn GNN")
     model_gnn = GNN(args.p, args.p*2, 2).to(device)  # use to learn model1
     optim_gnn = torch.optim.Adam(model_gnn.parameters(), lr=0.01)  # weight_decay=5e-4
     batch_xs_torch = torch.FloatTensor(batch_xs).to(device)
@@ -278,18 +278,22 @@ for iter in range(args.epochs):
         # A to graphsage
         outputs = model_gnn(batch_xs_torch, pred_adjs)
         loss_gnn = F.nll_loss(outputs.view(-1, 2), batch_ys_torch.view(-1))
-        if iter_gnn < args.iter_gnn - 1:  # not backward at the last iteration
-            loss_gnn.backward()
-            optim_gnn.step()
-    print("=== End learn GNN")
+        loss_gnn.backward()
+        optim_gnn.step()
+    # print("=== End learn GNN")
 
     # find loss adj
     model1.train()
     optim.zero_grad()
-    pred_As, loss_adj, batch_halfas = get_pred_As(
-        batch_xs, batch_ys, batch_as, training=True)
+    pred_As, loss_adj, batch_halfas = get_pred_As(batch_xs, batch_ys, batch_as, training=True)
+    pred_adjs = batch_pdist_to_adjs(pred_As)
+    outputs = model_gnn(batch_xs_torch, pred_adjs)
+    loss_gnn = F.nll_loss(outputs.view(-1, 2), batch_ys_torch.view(-1))
+
     # loss_distance = loss_reverse_distance(pred_As)  # prevent Adj -> I
+    loss_distance = 0
     # loss_shuffle = loss_shuffle_features(batch_xs[:4])
+    loss_shuffle = 0
     loss = loss_adj + loss_gnn  # + loss_shuffle*0.1
 #     loss = loss_gnn + loss_adj
 
@@ -308,39 +312,35 @@ for iter in range(args.epochs):
     if iter % 100 == 0:
         model1.eval()
         model_gnn = GNN(args.p, args.p*2, 2).to(device)
-        with torch.no_grad():
-            pred_As, _, _ = get_pred_As(
-                batch_xs[:5] + [x[1] for x in test_graphs],
-                batch_ys[:5] + [x[2] for x in test_graphs],
-                [x.cpu().numpy() for x in batch_halfas[:5]] +
-                [A_to_halfA(x[3]) for x in test_graphs],
-                training=False
-            )
-            # acc gnn
-            batch_xs = torch.FloatTensor(batch_xs).to(device)
-            batch_ys = torch.LongTensor(batch_ys).to(device)
-            pred_adjs = batch_pdist_to_adjs(pred_As)
-            optim_gnn = torch.optim.Adam(
-                model_gnn.parameters(), lr=0.005)  # weight_decay=5e-4
-            for iter_gnn in range(args.iter_gnn):
-                model_gnn.train()
-                optim_gnn.zero_grad()
-            #     pred_As to
+        # with torch.no_grad():
+        batch_xs = batch_xs[:5] + [x[1] for x in test_graphs]
+        batch_ys = batch_ys[:5] + [x[2] for x in test_graphs]
+        batch_halfas = [x.cpu().numpy() for x in batch_halfas[:5]] + [A_to_halfA(x[3]) for x in test_graphs]
+        pred_As, _, _ = get_pred_As(batch_xs, batch_ys, batch_halfas, training=False)
+        # acc gnn
+        batch_xs = torch.FloatTensor(batch_xs).to(device)
+        batch_ys = torch.LongTensor(batch_ys).to(device)
+        pred_adjs = batch_pdist_to_adjs(pred_As).detach()
+        optim_gnn = torch.optim.Adam(model_gnn.parameters(), lr=0.005)  # weight_decay=5e-4
+        for iter_gnn in range(args.iter_gnn):
+            model_gnn.train()
+            optim_gnn.zero_grad()
+        #     pred_As to
 
-                if iter % 100 == 0 and iter_gnn == args.iter_gnn - 1:
-                    print(pred_As[0, :10])
-                # A to graphsage
-                outputs = model_gnn(batch_xs, pred_adjs)
-                loss_gnn = F.nll_loss(outputs.view(-1, 2), batch_ys.view(-1))
-                if iter_gnn < args.iter_gnn - 1:  # not backward at the last iteration
-                    loss_gnn.backward()
-                    optim_gnn.step()
+            if iter % 100 == 0 and iter_gnn == args.iter_gnn - 1:
+                print(pred_As[0, :10])
+            # A to graphsage
+            outputs = model_gnn(batch_xs, pred_adjs)
+            loss_gnn = F.nll_loss(outputs.view(-1, 2), batch_ys.view(-1))
+            if iter_gnn < args.iter_gnn - 1:  # not backward at the last iteration
+                loss_gnn.backward()
+                optim_gnn.step()
 
-            print(pred_adjs.sum() / len(pred_adjs))
-            fs_gnn = [f1_gnn(output, y) for output, y in zip(outputs, batch_ys)]
-            fs_gnn_str = " ".join([f"{f1:.2f}" for f1 in fs_gnn])
+        print(pred_adjs.sum() / len(pred_adjs))
+        fs_gnn = [f1_gnn(output, y) for output, y in zip(outputs, batch_ys)]
+        fs_gnn_str = " ".join([f"{f1:.2f}" for f1 in fs_gnn])
 
-            print(f"Iter {iter} - loss_adj {loss_adj:.3f} loss_gnn {loss_gnn:.3f} - loss_dist {loss_distance:.3f} - loss_shuffle {loss_shuffle:.4f} - gnn {fs_gnn_str}")
+        print(f"Iter {iter} - loss_adj {loss_adj:.3f} loss_gnn {loss_gnn:.3f} - loss_dist {loss_distance:.3f} - loss_shuffle {loss_shuffle:.4f} - gnn {fs_gnn_str}")
 
 
 # learn model1 done, frozen model1

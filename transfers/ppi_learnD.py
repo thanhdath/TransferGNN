@@ -37,8 +37,9 @@ def collate(sample):
     return graph, feats, labels
 
 
-train_dataset = LegacyPPIDataset(mode="train")
-train_dataset = LegacyPPIDataset(mode="train")
+train_dataset = LegacyPPIDataset(mode="test")
+import pdb; pdb.set_trace()
+
 
 ids = np.random.permutation(len(train_dataset))
 nnodes = [x[0].number_of_nodes() for x in train_dataset]

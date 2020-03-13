@@ -2,7 +2,7 @@
 from itertools import chain
 import os
 from sklearn.metrics import f1_score
-
+import networkx as nx
 from torch.utils.data import DataLoader
 import torch
 import numpy as np
@@ -28,8 +28,8 @@ parser.add_argument('--n', type=int, default=32)
 parser.add_argument('--seed', type=int, default=100)
 parser.add_argument('--kind', type=str, default='sigmoid')
 parser.add_argument('--k', type=int, default=5)
-parser.add_argument('--n-graphs', type=int, default=128)
-parser.add_argument('--epochs', type=int, default=5000)
+parser.add_argument('--n-graphs', type=int, default=256)
+parser.add_argument('--epochs', type=int, default=2000)
 parser.add_argument('--batch-size', type=int, default=8)
 parser.add_argument('--beta', type=float, default=5)
 parser.add_argument('--alpha', type=float, default=1.0)
@@ -174,7 +174,7 @@ def count_number_of_parameters(model):
 
 
 graphs = []
-train_size = args.n_graphs - 20
+train_size = args.n_graphs - 32
 u = np.random.multivariate_normal(np.zeros((args.p)), np.eye(args.p)/args.p, 1)
 print("u", u)
 n_edges = []
@@ -198,10 +198,8 @@ print(model1)
 print('Number of parameters: ', count_number_of_parameters(model1))
 model_gnn = GNN(args.p, args.p*2, 2).to(device)  # use to learn model1
 print(model_gnn)
-optim = torch.optim.Adam(
-    chain(model1.parameters(), model_gnn.parameters()), lr=0.01)  # weight_decay=5e-4
-discriminator = Discriminator().to(device)
-print(discriminator)
+# discriminator = Discriminator().to(device)
+# print(discriminator)
 
 optim = torch.optim.Adam(
     [
@@ -213,15 +211,10 @@ optim = torch.optim.Adam(
 )
 
 
-def loss_adj_fn(predA, A, dis_smooth=0.2):
-    bs = len(predA)
-    x = torch.cat([predA, A], dim=0)
-    y = torch.FloatTensor(2 * bs).zero_().to(device)
-    y[bs:] = dis_smooth  # must classify as fake
-    y[:bs] = 1 - dis_smooth  # real
-    preds = discriminator(x)
-    loss = F.binary_cross_entropy(preds, y)
-    return loss
+def loss_adj_fn(predA, A):
+    weight = torch.ones(A.shape)
+    weight[A == 0] = 0.5
+    return F.binary_cross_entropy(predA, A, weight=weight.to(device))
 
 
 def loss_reverse_distance(predAs):
@@ -251,7 +244,8 @@ loss_shuffles = []
 loss_adjs = []
 
 # loss_adj_fn = nn.MSELoss()
-loss_adj_fn = nn.BCELoss()
+# loss_adj_fn = nn.BCELoss()
+
 for iter in range(args.epochs):
     model1.train()
     model_gnn.train()
@@ -269,7 +263,9 @@ for iter in range(args.epochs):
     pred_As = model1.predict_adj(batch_xs, absolute=False)
     batch_halfas = torch.stack(
         [torch.FloatTensor(A_to_halfA(x)).to(device) for x in batch_as])
+#     batch_as = torch.stack([torch.FloatTensor(x) for x in batch_as]).to(device)
     loss_adj = loss_adj_fn(pred_As, batch_halfas)
+#     loss_adj = weighted_cross_entropy_with_logits(pred_As, batch_halfas, beta=0.8)
 
     batch_xs = torch.FloatTensor(batch_xs).to(device)
 #     pred_As to
@@ -281,7 +277,18 @@ for iter in range(args.epochs):
     loss_gnn = F.nll_loss(outputs.view(-1, 2), batch_ys.view(-1))
     loss_distance = loss_reverse_distance(pred_As)  # prevent Adj -> I
     loss_shuffle = loss_shuffle_features(batch_xs[:4])
-    loss = loss_adj + loss_gnn + loss_distance  # + loss_shuffle*0.1
+
+    assert not torch.isnan(pred_adjs).any(), "Pred adjs contains nan"
+    assert not torch.isinf(pred_adjs).any(), "Pred adjs inf"
+    if torch.isnan(pred_adjs.sum()):
+        print(pred_adjs)
+
+#     reg_loss = torch.sqrt((pred_adjs.sum() / args.batch_size) - np.mean(n_edges))
+    reg_loss = torch.sqrt(
+        torch.sum((pred_As.sum(dim=[1]) - batch_halfas.sum(dim=[1]))**2)
+    )
+    loss = loss_adj + loss_distance + loss_gnn  # + loss_shuffle*0.1
+    loss += reg_loss*0.001
 #     loss = loss_gnn + loss_adj
 
     loss.backward()
@@ -308,6 +315,12 @@ for iter in range(args.epochs):
             batch_xs = torch.FloatTensor(batch_xs).to(device)
             batch_ys = torch.LongTensor(batch_ys).to(device)
             pred_adjs = batch_pdist_to_adjs(pred_As)
+
+#             pred adjs to nx
+            graphs_nx = [nx.from_numpy_matrix(x.cpu().numpy()) for x in pred_adjs]
+            print("Components: ", [
+                  len(list(nx.connected_component_subgraphs(x))) for x in graphs_nx])
+
             print(pred_adjs.sum() / len(pred_adjs))
 #             print(pred_adjs[0])
             outputs = model_gnn(batch_xs, pred_adjs)
@@ -315,7 +328,6 @@ for iter in range(args.epochs):
             fs_gnn_str = " ".join([f"{f1:.2f}" for f1 in fs_gnn])
 
             print(f"Iter {iter} - loss_adj {loss_adj:.3f} loss_gnn {loss_gnn:.3f} - loss_dist {loss_distance:.3f} - loss_shuffle {loss_shuffle:.4f} - gnn {fs_gnn_str}")
-
 
 # learn model1 done, frozen model1
 for i in model1.parameters():
@@ -352,10 +364,10 @@ def evaluate_mmd(graphs_real, graphsF):
     print(f'MMD 4orbits: {mmd_4orbits:.3f}')
 
 
-evaluate_mmd(
-    [x[-1] for x in test_graphs],
-    [x[0] for x in test_graphs]
-)
+# evaluate_mmd(
+#     [x[-1] for x in test_graphs],
+#     [x[0] for x in test_graphs]
+# )
 
 
 def save_graphs(A, X, L, outdir):

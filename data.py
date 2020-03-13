@@ -1,6 +1,6 @@
-import torch 
+import torch
 import numpy as np
-import networkx as nx 
+import networkx as nx
 from scipy import sparse
 from sklearn.preprocessing import MultiLabelBinarizer
 from torch_geometric.data import NeighborSampler, Data
@@ -16,6 +16,7 @@ labels2int = {
     "null": 6
 }
 
+
 def load_edgelist(adj_file):
     edgelist = []
     with open(adj_file) as fp:
@@ -27,20 +28,21 @@ def load_edgelist(adj_file):
     if edgelist.shape[0] == edgelist.shape[1]:
         # adj
         nodes = np.arange(len(edgelist))
-        edge_index = np.argwhere(edgelist>0)
-        edge_weight = edgelist[edge_index[:,0], edge_index[:,1]]
+        edge_index = np.argwhere(edgelist > 0)
+        edge_weight = edgelist[edge_index[:, 0], edge_index[:, 1]]
         edgelist = np.zeros((len(edge_index), 3))
-        edgelist[:,:2] = edge_index
-        edgelist[:,2] = edge_weight
+        edgelist[:, :2] = edge_index
+        edgelist[:, 2] = edge_weight
     else:
         edgelist = edgelist.astype(np.int)
-        nodes = np.arange(edgelist[:,:2].max() + 1)
+        nodes = np.arange(edgelist[:, :2].max() + 1)
     if edgelist.shape[1] == 2:
         edges = np.zeros((len(edgelist), 3))
         edges[:, :2] = edgelist
-        edges[:,2] = 1. 
+        edges[:, 2] = 1.
         edgelist = edges
     return edgelist, nodes
+
 
 def load_graph(adj_file, feature_file, label_file, multiclass=None):
     edges, nodes = load_edgelist(adj_file)
@@ -61,26 +63,27 @@ def load_graph(adj_file, feature_file, label_file, multiclass=None):
             except:
                 conversion = str
         label = [conversion(x) for x in line[1:]]
-        if len(label)>1: multiclass_found = True
+        if len(label) > 1:
+            multiclass_found = True
         node2label[node] = label
     if multiclass is None:
         multiclass = multiclass_found
     print("Multiclass: ", multiclass)
 
     nodes = np.array(list(sorted(node2label.keys())))
-    labels =[node2label[node] for node in nodes]
+    labels = [node2label[node] for node in nodes]
     if not multiclass:
         labels = [i[0] for i in labels]
         y = torch.LongTensor(labels)
     else:
-        mlb = MultiLabelBinarizer()
-        labels = mlb.fit_transform(labels)
+        # mlb = MultiLabelBinarizer()
+        # labels = mlb.fit_transform(labels)
         y = torch.FloatTensor(labels)
-    
+
     x = np.load(feature_file, allow_pickle=True)["features"][()]
     x = torch.FloatTensor(x)
-    edge_index = edges[:,:2]
-    edge_weight = torch.FloatTensor(edges[:,2])
+    edge_index = edges[:, :2]
+    edge_weight = torch.FloatTensor(edges[:, 2])
     edge_index = torch.LongTensor(edge_index.T)
 
     n_nodes = len(nodes)
@@ -103,10 +106,11 @@ def load_graph(adj_file, feature_file, label_file, multiclass=None):
     val_mask = torch.tensor(val_mask, dtype=torch.uint8)
     test_mask = torch.tensor(test_mask, dtype=torch.uint8)
 
-    data = Data(x=x, y=y, edge_index=edge_index, 
-        train_mask=train_mask, test_mask=test_mask, val_mask=val_mask,
-        edge_attr=edge_weight)
+    data = Data(x=x, y=y, edge_index=edge_index,
+                train_mask=train_mask, test_mask=test_mask, val_mask=val_mask,
+                edge_attr=edge_weight)
     return data, multiclass
+
 
 if __name__ == '__main__':
     data = load_graph("twain_tramp/wan_twain_tramp_1.txt", "features.npz", "labels.txt")
