@@ -44,28 +44,56 @@ def load_edgelist(adj_file):
     return edgelist, nodes
 
 
+def load_label(label_file):
+    lines = open(label_file).readlines()
+    start_line = 0
+    end_line = None
+    temp_line = ""
+    node2label = {}
+    for i in range(len(lines)):
+        if "[" in lines[i]:
+            start_line = i
+        if "]" in lines[i]:
+            end_line = i
+        temp_line += lines[i]
+        if start_line is not None and end_line is not None:
+            temp_line = temp_line.replace("[", "").replace("]", "")
+            elms = re.split("\s+", temp_line.strip())
+            node = elms[0]
+            label = [int(x) for x in elms[1:]]
+            node2label[node] = label
+            temp_line = ""
+            start_line = None
+            end_line = None
+    return node2label, True
+
+
 def load_graph(adj_file, feature_file, label_file, multiclass=None):
     edges, nodes = load_edgelist(adj_file)
     node2label = {}
     multiclass_found = False
     conversion = None
-    for i, line in enumerate(open(label_file)):
-        line = re.split("\s+", line.strip())
-        node = i
-        # if len(line) == 1:
-        #     label = [labels2int["null"]]
-        # else:
-        #     label = [labels2int[i] for i in line[1:]]
-        if conversion is None:
-            try:
-                [int(x) for x in line[1:]]
-                conversion = int
-            except:
-                conversion = str
-        label = [conversion(x) for x in line[1:]]
-        if len(label) > 1:
-            multiclass_found = True
-        node2label[node] = label
+
+    # for i, line in enumerate(open(label_file)):
+    #     line = line.replace("[", "").replace("]", "")
+    #     line = re.split("\s+", line.strip())
+    #     node = i
+    #     # if len(line) == 1:
+    #     #     label = [labels2int["null"]]
+    #     # else:
+    #     #     label = [labels2int[i] for i in line[1:]]
+    #     if conversion is None:
+    #         try:
+    #             [int(x) for x in line[1:]]
+    #             conversion = int
+    #         except:
+    #             conversion = str
+    #     label = [conversion(x) for x in line[1:]]
+    #     if len(label) > 1:
+    #         multiclass_found = True
+    #     node2label[node] = label
+    node2label, multiclass = load_label(label_file)
+
     if multiclass is None:
         multiclass = multiclass_found
     print("Multiclass: ", multiclass)
@@ -87,7 +115,7 @@ def load_graph(adj_file, feature_file, label_file, multiclass=None):
     edge_index = torch.LongTensor(edge_index.T)
 
     n_nodes = len(nodes)
-    n_train = int(0.5*n_nodes)
+    n_train = int(0.5 * n_nodes)
     # n_val = int(0.2*n_nodes)
     n_val = n_nodes - n_train
 
@@ -96,8 +124,8 @@ def load_graph(adj_file, feature_file, label_file, multiclass=None):
     test_mask = np.zeros((n_nodes,))
     inds = np.random.permutation(n_nodes)
     train_inds = inds[:n_train]
-    val_inds = inds[n_train:n_train+n_val]
-    test_inds = inds[n_train+n_val:]
+    val_inds = inds[n_train:n_train + n_val]
+    test_inds = inds[n_train + n_val:]
     train_mask[train_inds] = 1
     val_mask[val_inds] = 1
     test_mask[test_inds] = 1

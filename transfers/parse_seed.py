@@ -1,9 +1,9 @@
 import re
-import glob 
+import glob
 import numpy as np
 import os
 
-logtypes = glob.glob("logs/transfers-sbm*")
+# logtypes = glob.glob("logs/transfers-sbm*")
 # for logtype in sorted(logtypes):
 #     print("\nLog type:", logtype)
 #     sublogtype = os.listdir(logtype)
@@ -25,9 +25,11 @@ logtypes = glob.glob("logs/transfers-sbm*")
 groups = {
 
 }
+import sys
+logbase = sys.argv[1]
 
 for seed in range(100, 110):
-    logdir = "logs/end2end-sbm-seed{}".format(seed)
+    logdir = "{}/synf-seed{}".format(logbase, seed)
     if not os.path.isdir(logdir):
         print("Not found {}".format(logdir))
         continue
@@ -45,5 +47,6 @@ for seed in range(100, 110):
     except:
         continue
 
-for key, v in groups.items():
+for key in sorted(groups.keys()):
+    v = groups[key]
     print(f"{key}: {np.mean(v):.3f}+-{np.std(v):.3f}")

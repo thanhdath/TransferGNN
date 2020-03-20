@@ -44,31 +44,56 @@ print("Num features:", dataset.num_features)
 print("Num classes:", num_classes)
 
 # GCN
+
+
 class Net(torch.nn.Module):
     def __init__(self):
         super(Net, self).__init__()
-        # self.conv1 = GCNConv(dataset.num_features, 32, cached=True)
-        # self.conv2 = GCNConv(32, num_classes, cached=True)
-        # self.conv1 = ChebConv(data.num_features, 16, K=2)
-        # self.conv2 = ChebConv(16, data.num_features, K=2)
-        self.conv1 = SAGEConv(dataset.num_features, args.hidden, normalize=False)
-        self.conv2 = SAGEConv(args.hidden, num_classes, normalize=False)
+        self.conv1 = GATConv(dataset.num_features, 256, heads=4)
+        self.lin1 = torch.nn.Linear(dataset.num_features, 4 * 256)
+        self.conv2 = GATConv(4 * 256, 256, heads=4)
+        self.lin2 = torch.nn.Linear(4 * 256, 4 * 256)
+        self.conv3 = GATConv(
+            4 * 256, num_classes, heads=6, concat=False)
+        self.lin3 = torch.nn.Linear(4 * 256, num_classes)
 
     def forward(self):
         x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
-        # x = self.conv1(x, edge_index, edge_attr=edge_attr)
-        x = self.conv1(x, edge_index)
-        # x = x / data.x.shape[0]
-        x = F.relu(x)
-        x = F.dropout(x, training=self.training)
-        # x = self.conv2(x, edge_index, edge_attr=edge_attr)
-        x = self.conv2(x, edge_index)
-        # x = x / data.x.shape[0]
+        x = F.elu(self.conv1(x, edge_index) + self.lin1(x))
+        x = F.elu(self.conv2(x, edge_index) + self.lin2(x))
+        x = self.conv3(x, edge_index) + self.lin3(x)
         if multiclass:
             return x
         return F.log_softmax(x, dim=1)
 
+# class Net(torch.nn.Module):
+
+#     def __init__(self):
+#         super(Net, self).__init__()
+#         # self.conv1 = GCNConv(dataset.num_features, 32, cached=True)
+#         # self.conv2 = GCNConv(32, num_classes, cached=True)
+#         # self.conv1 = ChebConv(data.num_features, 16, K=2)
+#         # self.conv2 = ChebConv(16, data.num_features, K=2)
+#         self.conv1 = SAGEConv(dataset.num_features, args.hidden, normalize=False)
+#         self.conv2 = SAGEConv(args.hidden, num_classes, normalize=False)
+
+#     def forward(self):
+#         x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
+#         # x = self.conv1(x, edge_index, edge_attr=edge_attr)
+#         x = self.conv1(x, edge_index)
+#         # x = x / data.x.shape[0]
+#         x = F.relu(x)
+#         x = F.dropout(x, training=self.training)
+#         # x = self.conv2(x, edge_index, edge_attr=edge_attr)
+#         x = self.conv2(x, edge_index)
+#         # x = x / data.x.shape[0]
+#         if multiclass:
+#             return x
+#         return F.log_softmax(x, dim=1)
+
+
 class SoftmaxRegression(torch.nn.Module):
+
     def __init__(self):
         super(SoftmaxRegression, self).__init__()
         # self.model = torch.nn.Sequential(
@@ -77,12 +102,14 @@ class SoftmaxRegression(torch.nn.Module):
         #     torch.nn.Linear(dataset.num_features*2, num_classes)
         # )
         self.model = torch.nn.Linear(dataset.num_features, num_classes)
+
     def forward(self):
         x = data.x
         x = self.model(x)
         if multiclass:
             return x
         return F.log_softmax(x, dim=1)
+
 
 def train():
     model.train()
@@ -94,8 +121,10 @@ def train():
         F.nll_loss(outputs, data.y[data.train_mask]).backward()
     optimizer.step()
 
+
 def f1(output, labels, multiclass=False):
-    if len(output) == 0: return 0, 0
+    if len(output) == 0:
+        return 0, 0
     if not multiclass:
         preds = output.max(1)[1]
         preds = preds.cpu().detach().numpy()
@@ -105,13 +134,14 @@ def f1(output, labels, multiclass=False):
         return micro, macro
     else:
         probs = torch.sigmoid(output)
-        probs[probs>0.5] = 1
-        probs[probs<=0.5] = 0
+        probs[probs > 0.5] = 1
+        probs[probs <= 0.5] = 0
         probs = probs.cpu().detach().numpy().astype(np.int32)
         labels = labels.cpu().detach().numpy().astype(np.int32)
         micro = f1_score(labels, probs, average='micro')
         macro = f1_score(labels, probs, average='macro')
         return micro, macro
+
 
 def test():
     model.eval()
@@ -123,10 +153,11 @@ def test():
         micros.append(micro)
         macros.append(macro)
     return micros, macros
-        # pred = logits[mask].max(1)[1]
-        # acc = pred.eq(data.y[mask]).sum().item() / mask.sum().item()
-        # accs.append(acc)
+    # pred = logits[mask].max(1)[1]
+    # acc = pred.eq(data.y[mask]).sum().item() / mask.sum().item()
+    # accs.append(acc)
     # return accs
+
 
 def getfilename(path):
     if path is None:
@@ -149,7 +180,8 @@ if args.transfer is not None:
     for k in pretrained_state_dict.keys():
         if pretrained_state_dict[k].shape != model_state_dict[k].shape:
             differ_shape_params.append(k)
-    pretrained_state_dict.update({k: v for k,v in model.state_dict().items() if k in differ_shape_params})
+    pretrained_state_dict.update(
+        {k: v for k, v in model.state_dict().items() if k in differ_shape_params})
     model.load_state_dict(pretrained_state_dict)
 if multiclass:
     criterion = torch.nn.BCEWithLogitsLoss()
@@ -164,7 +196,8 @@ if args.transfer is not None:
     model_name = f"model/{getfilename(args.adj)}-transfer-from-{getfilename(args.transfer)}.pkl"
 else:
     model_name = f"model/{getfilename(args.adj)}.pkl"
-writer = tensorboardX.SummaryWriter(logdir="runs/"+model_name.split("/")[-1].split(".")[0])
+writer = tensorboardX.SummaryWriter(
+    logdir="runs/" + model_name.split("/")[-1].split(".")[0])
 
 micros, macros = test()
 train_acc, val_acc, tmp_test_acc = micros
@@ -192,9 +225,10 @@ for epoch in range(1, epochs):
         best_val_acc = val_acc
         torch.save(model.state_dict(), model_name)
         # test_acc = tmp_test_acc
-    if epoch%20 == 0 or epoch == epochs-1:
+    if epoch % 20 == 0 or epoch == epochs - 1:
         log = 'Epoch: {:03d}, micro-macro Train: {:.4f}-{:.4f}, Val: {:.4f}-{:.4f}, Test: {:.4f}-{:.4f}'
-        print(log.format(epoch, train_acc, train_macro, val_acc, val_macro, tmp_test_acc, test_macro))
+        print(log.format(epoch, train_acc, train_macro,
+                         val_acc, val_macro, tmp_test_acc, test_macro))
         writer.add_scalar("train_acc", train_acc, epoch)
         writer.add_scalar("val_acc", val_acc, epoch)
         writer.add_scalar("test_acc", tmp_test_acc, epoch)
@@ -207,7 +241,10 @@ logits = model()
 with torch.no_grad():
     mask = data['val_mask']
     preds = logits[mask]
-    preds = torch.sigmoid(preds).cpu().numpy()
-    preds[preds >= 0.5] = 1
-    preds[preds < 0.5] = 0
+    if not multiclass:
+        preds = torch.argmax(preds, dim=1).cpu().numpy()
+    else:
+        preds = torch.sigmoid(preds).cpu().numpy()
+        preds[preds >= 0.5] = 1
+        preds[preds < 0.5] = 0
     print(classification_report(data.y[mask].cpu().numpy(), preds))
