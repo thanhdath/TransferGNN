@@ -22,6 +22,7 @@ parser.add_argument('--n-graphs', type=int, default=128)
 parser.add_argument('--epochs', type=int, default=100)
 parser.add_argument('--batch-size', type=int, default=32)
 parser.add_argument('--evaluation-epochs', type=int, default=10)
+parser.add_argument('--edge-weight', type=float, default=1.0)
 parser.add_argument('--gen-multigraph', action='store_true')
 parser.add_argument('--data-savepath', default="data-sbm/")
 args = parser.parse_args()
@@ -298,7 +299,7 @@ class GRANMixtureBernoulli(nn.Module):
         super(GRANMixtureBernoulli, self).__init__()
         self.hidden_dim = args.p # ppi features size
         self.num_mix_component = 16
-        self.edge_weight = 1.0
+        self.edge_weight = args.edge_weight
 
         self.output_alpha = nn.Sequential(
             nn.Linear(self.hidden_dim, self.hidden_dim),
@@ -318,13 +319,15 @@ class GRANMixtureBernoulli(nn.Module):
         self.adj_loss_func = nn.BCEWithLogitsLoss(pos_weight=pos_weight, reduction='none')
         
     def forward(self, graphs):
-        bs = 32
+#         bs = 999999
         adjs = [x[-1] for x in graphs]
         features = [x[1] for x in graphs]
-        true_edges = [np.random.permutation(np.argwhere(adj == 1))[:bs] for adj in adjs]
-        false_edges = [np.random.permutation(np.argwhere(adj == 0))[:bs] for adj in adjs]
+        true_edges = [np.random.permutation(np.argwhere(adj == 1)) for adj in adjs]
+        false_edges = [np.random.permutation(np.argwhere(adj == 0)) for adj in adjs]
         all_edges = [np.concatenate([x, y], axis=0) for x, y in zip(true_edges, false_edges)]
-        label = torch.cat([torch.FloatTensor(np.array([1]*bs+[0]*bs)).cuda() for _ in all_edges], dim=0)
+        label = torch.cat([
+            torch.FloatTensor(np.array([1]*len(x)+[0]*len(y))).cuda() for x, y in zip(true_edges, false_edges)
+        ], dim=0)
 #         
         features = [torch.FloatTensor(x).cuda() for x in features]
         diff = torch.cat([x[edges[:,0]] - x[edges[:,1]] for x, edges in zip(features, all_edges)], dim=0)
@@ -417,7 +420,7 @@ if not os.path.isdir(f"{args.data_savepath}/imgs/"):
 print("Start training")
 for epoch in tqdm(range(args.epochs)):
     loss = train_a_epoch()
-    if epoch % args.evaluation_epochs == 0:
+    if epoch % args.evaluation_epochs == 0 or epoch == args.epochs - 1:
         val_loss = evaluate(test_data)
         log_str = f"Epoch {epoch} - loss {loss:.3f} - val loss {val_loss:.3f}"
         print(log_str)
@@ -432,6 +435,7 @@ for epoch in tqdm(range(args.epochs)):
                 model.predict_adj(test_data[ind_test][1]).detach().cpu().numpy()
             ]
             gen_graphs = [nx.from_numpy_matrix(x) for x in gen_adjs]
+            print("Gen graphs - number of edges: ", [x.sum() for x in gen_adjs])
             plt.figure(dpi=150)
             plt.subplot(221)
             nx.draw(original_graphs[0], node_size=20)
