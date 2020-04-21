@@ -26,14 +26,23 @@ parser.add_argument('--mu', type=float, default=100)
 parser.add_argument('--p', type=int, default=8)
 parser.add_argument('--n', type=int, default=32)
 parser.add_argument('--seed', type=int, default=100)
-parser.add_argument('--kind', type=str, default='sigmoid')
-parser.add_argument('--k', type=int, default=5)
-parser.add_argument('--n-graphs', type=int, default=256)
-parser.add_argument('--epochs', type=int, default=2000)
-parser.add_argument('--batch-size', type=int, default=8)
-parser.add_argument('--beta', type=float, default=5)
-parser.add_argument('--alpha', type=float, default=1.0)
+parser.add_argument('--n-graphs', type=int, default=300)
+parser.add_argument('--epochs', type=int, default=5000)
+parser.add_argument('--batch-size', type=int, default=16)
 args = parser.parse_args()
+
+# from types import SimpleNamespace
+# args = {
+#     "lam": 0,
+#     "mu": 0,
+#     "p": 8,
+#     "n": 128,
+#     "seed": 100,
+#     "n_graphs": 300,
+#     "epochs": 10000,
+#     "batch_size": 16
+# }
+# args= SimpleNamespace(**args)
 
 np.random.seed(args.seed)
 torch.manual_seed(args.seed)
@@ -56,12 +65,14 @@ class GNN(torch.nn.Module):
         super(GNN, self).__init__()
         self.add_loop = add_loop
         self.conv1 = SAGECompletedGraph(in_channels, hidden_channels, normalize)
-        self.conv2 = SAGECompletedGraph(hidden_channels, num_classes, normalize)
+        self.conv2 = SAGECompletedGraph(hidden_channels, hidden_channels, normalize)
+        self.conv3 = SAGECompletedGraph(hidden_channels, num_classes, normalize)
 
     def forward(self, x, adj, mask=None):
         batch_size, num_nodes, in_channels = x.size()
         x = F.relu(self.conv1(x, adj, mask, self.add_loop))
         x = F.relu(self.conv2(x, adj, mask, self.add_loop))
+        x = F.relu(self.conv3(x, adj, mask, self.add_loop))
         return F.log_softmax(x, dim=1)
 
 
@@ -172,22 +183,54 @@ def A_to_halfA(A):
 def count_number_of_parameters(model):
     return sum(p.numel() for p in model.parameters())
 
+from torch.autograd import Variable
+class FocalLoss(nn.modules.loss._WeightedLoss):
 
+    def __init__(self, gamma=2, weight=None, size_average=None, ignore_index=-100,
+                 reduce=None, reduction='mean', balance_param=0.25):
+        super(FocalLoss, self).__init__(weight, size_average, reduce, reduction)
+        self.gamma = gamma
+        self.weight = weight
+        self.size_average = size_average
+        self.ignore_index = ignore_index
+        self.balance_param = balance_param
+
+    def forward(self, input, target):
+        
+        # inputs and targets are assumed to be BatchxClasses
+        assert len(input.shape) == len(target.shape)
+        assert input.size(0) == target.size(0)
+        assert input.size(1) == target.size(1)
+        
+        weight = Variable(self.weight)
+           
+        # compute the negative likelyhood
+        logpt = - F.binary_cross_entropy_with_logits(input, target, pos_weight=weight, reduction=self.reduction)
+        pt = torch.exp(logpt)
+
+        # compute the loss
+        focal_loss = -( (1-pt)**self.gamma ) * logpt
+        balanced_focal_loss = self.balance_param * focal_loss
+        return balanced_focal_loss
+    
 graphs = []
 train_size = args.n_graphs - 32
 u = np.random.multivariate_normal(np.zeros((args.p)), np.eye(args.p)/args.p, 1)
 print("u", u)
 n_edges = []
+n_positive_pdists = []
 for i in range(args.n_graphs):
     if i % 100 == 0:
         print(f"{i+1}/{args.n_graphs}")
     Asbm, X, L = gen_graph(n=args.n, p=args.p, lam=args.lam, mu=args.mu, u=u)
+    Asbm[np.arange(len(Asbm)), np.arange(len(Asbm))] = 0
     n_edges.append(Asbm.sum())
+    halfAsbm = A_to_halfA(Asbm)
+    n_positive_pdists.append(halfAsbm.sum())
     graphs.append((None, X, L, Asbm))
 train_graphs = graphs[:train_size]
 test_graphs = graphs[train_size:]
-print(
-    f"Number of edges: min {np.min(n_edges)} - max {np.max(n_edges)} - ave {np.mean(n_edges):.2f}")
+print(f"Number of edges: min {np.min(n_edges)} - max {np.max(n_edges)} - ave {np.mean(n_edges):.2f}")
 print("Auto adjust k")
 ave_degree = np.mean(n_edges) / args.n
 args.k = int(ave_degree)
@@ -203,7 +246,7 @@ print(model_gnn)
 
 optim = torch.optim.Adam(
     [
-        {'params': model1.parameters(), 'lr': 5e-4},
+        {'params': model1.parameters(), 'lr': 0.01},
         {'params': model_gnn.parameters()},
         # {'params': discriminator.parameters(), 'lr': 5e-4}
     ],
@@ -211,11 +254,16 @@ optim = torch.optim.Adam(
 )
 
 
+weight_zeros= np.mean(n_positive_pdists) / (args.n * (args.n-1)//2) 
+print("Weight zeros: ", weight_zeros)
 def loss_adj_fn(predA, A):
     weight = torch.ones(A.shape)
-    weight[A == 0] = 0.5
-    return F.binary_cross_entropy(predA, A, weight=weight.to(device))
+    weight[A == 0] = weight_zeros
+    return F.binary_cross_entropy(predA, A, 
+#                                   weight=weight.to(device)
+                                 )
 
+# loss_adj_fn = FocalLoss(weight=torch.ones((args.batch_size, args.n*(args.n-1)//2))).cuda()
 
 def loss_reverse_distance(predAs):
     #     predAs BxP
@@ -288,7 +336,7 @@ for iter in range(args.epochs):
         torch.sum((pred_As.sum(dim=[1]) - batch_halfas.sum(dim=[1]))**2)
     )
     loss = loss_adj + loss_distance + loss_gnn  # + loss_shuffle*0.1
-    loss += reg_loss*0.001
+#     loss += reg_loss*0.001
 #     loss = loss_gnn + loss_adj
 
     loss.backward()
@@ -317,18 +365,19 @@ for iter in range(args.epochs):
             pred_adjs = batch_pdist_to_adjs(pred_As)
 
 #             pred adjs to nx
-            graphs_nx = [nx.from_numpy_matrix(x.cpu().numpy()) for x in pred_adjs]
-            print("Components: ", [
-                  len(list(nx.connected_component_subgraphs(x))) for x in graphs_nx])
+            graphs_nx = [nx.from_numpy_matrix(x.cpu().numpy()) for x in pred_adjs[:]]
+            print("Components: ", [len(list(nx.connected_components(x))) for x in graphs_nx])
 
-            print(pred_adjs.sum() / len(pred_adjs))
+            print(f"Edges: {pred_adjs.sum() / len(pred_adjs):.2f}", )
 #             print(pred_adjs[0])
             outputs = model_gnn(batch_xs, pred_adjs)
-            fs_gnn = [f1_gnn(output, y) for output, y in zip(outputs, batch_ys)]
+            fs_gnn = [f1_gnn(output, y) for output, y in zip(outputs[:5], batch_ys[:5])]
             fs_gnn_str = " ".join([f"{f1:.2f}" for f1 in fs_gnn])
 
             print(f"Iter {iter} - loss_adj {loss_adj:.3f} loss_gnn {loss_gnn:.3f} - loss_dist {loss_distance:.3f} - loss_shuffle {loss_shuffle:.4f} - gnn {fs_gnn_str}")
 
+
+            
 # learn model1 done, frozen model1
 for i in model1.parameters():
     model1.requires_grad = False
@@ -338,75 +387,117 @@ with torch.no_grad():
     print("u", u)
     for i in range(args.n_graphs):
         _, X, L, Asbm = graphs[i]
-        halfA = model1.predict_adj([X], absolute=True)[0].cpu().numpy()
+        halfA = model1.predict_adj([X], absolute=False)[0].cpu().numpy()
         A = halfA_to_A(halfA)
         graphs[i] = (A, X, L, Asbm)
 
 train_graphs = graphs[:train_size]
 test_graphs = graphs[train_size:]
 
-# evaluate MMD
+
+import networkx as nx
+from networkx.readwrite import json_graph
+import json
+
+def save_graphs_list(As, Xs, Ls, savedir):
+    idx = 0
+    graph_ids = []
+    graph_id = 0
+    edges_all = []
+    for A, X, L in zip(As, Xs, Ls):
+        edge_index = np.argwhere(A > 0)
+        edges_weight = A[edge_index[:,0], edge_index[:,1]]
+        edge_index += idx
+        edges = np.concatenate([edge_index, edges_weight.reshape(-1, 1)], axis=1)
+        edges_all.append(edges)
+        graph_ids += [graph_id] * len(X)
+        idx += len(X)
+        graph_id += 1
+    edges_all = np.concatenate(edges_all, axis=0)
+    graph_ids = np.array(graph_ids, dtype=np.int)
+    Xs = np.concatenate(Xs, axis=0)
+    Ls = np.concatenate(Ls, axis=0).astype(np.int)
+    if len(Ls.shape) == 1:
+        Ls = Ls.reshape(-1, 1)
+    adj = np.zeros((len(Xs), len(Xs)))
+    adj[edges_all[:, 0].astype(np.int), edges_all[:, 1].astype(np.int)] = edges_all[:,2]
+    G = nx.from_numpy_matrix(adj)
+    print(f"""
+        Info:
+            - Number of nodes: {G.number_of_nodes()}
+            - Number of edges: {G.number_of_edges()}
+            - Xs shape: {Xs.shape}
+            - Ls shape: {Ls.shape}
+            - graph_ids shape: {graph_ids.shape}
+    """)
+    if not os.path.isdir(savedir):
+        os.makedirs(savedir)
+    G_data = json_graph.node_link_data(G)
+    dataname = savedir.split("/")[-1]
+    with open(f"{savedir}/{dataname}_graph.json", "w+") as fp:
+        fp.write(json.dumps(G_data))
+    np.save(savedir + "/feats.npy", Xs)
+    np.save(savedir + "/labels.npy", Ls)
+    np.save(savedir + "/graph_id.npy", graph_ids)
+
+def save_multiple_validation_graphs(savepath, seed, train_graphs, test_graphs):
+  n_edges = [x[0].sum() for x in train_graphs]
+  k = int(np.mean(n_edges)) / train_graphs[0][1].shape[0]
+  print('Atrain-Xtrain')
+  save_graphs_list(
+      [x[3] for x in train_graphs],
+      [x[1] for x in train_graphs],
+      [x[2] for x in train_graphs],
+      f"{savepath}/synf-seed{seed}-multigraphs/Atrain-Xtrain"
+  )
+
+  print('AtrainF-Xtrain')
+  save_graphs_list(
+      [x[0] for x in train_graphs],
+      [x[1] for x in train_graphs],
+      [x[2] for x in train_graphs],
+      f"{savepath}/synf-seed{seed}-multigraphs/AtrainF-Xtrain"
+  )
+
+  print('Atest-Xtest')
+  save_graphs_list(
+      [x[3] for x in test_graphs],
+      [x[1] for x in test_graphs],
+      [x[2] for x in test_graphs],
+      f"{savepath}/synf-seed{seed}-multigraphs/Atest-Xtest"
+  )
+
+  print('A2-Xtest')  # A2 = Af
+  save_graphs_list(
+      [x[0] for x in test_graphs],
+      [x[1] for x in test_graphs],
+      [x[2] for x in test_graphs],
+      f"{savepath}/synf-seed{seed}-multigraphs/A2-Xtest"
+  )
+
+  print('A3-Xtest')  # A3 = KNN(X)
+  A3_graphs = []
+  for _, X, L, A in test_graphs:
+      A3 = generate_graph(torch.FloatTensor(X), kind="knn", k=k)
+      A3_graphs.append((A3, X, L, A))
+  save_graphs_list(
+      [x[0] for x in A3_graphs],
+      [x[1] for x in A3_graphs],
+      [x[2] for x in A3_graphs],
+      f"{savepath}/synf-seed{seed}-multigraphs/A3-Xtest"
+  )
+
+  print('A4-Xtest')  # A4 = Sigmoid(X)
+  A4_graphs = []
+  for _, X, L, A in test_graphs:
+      A4 = generate_graph(torch.FloatTensor(X), kind="sigmoid", k=k)
+      A4_graphs.append((A4, X, L, A))
+  save_graphs_list(
+      [x[0] for x in A4_graphs],
+      [x[1] for x in A4_graphs],
+      [x[2] for x in A4_graphs],
+      f"{savepath}/synf-seed{seed}-multigraphs/A4-Xtest"
+  )
 
 
-def evaluate_mmd(graphs_real, graphsF):
-    # convert graph to networkx
-    import networkx as nx  # networkx==1.11
-    graphs_real = [nx.from_numpy_matrix(x) for x in graphs_real]
-    graphsF = [nx.from_numpy_matrix(x) for x in graphsF]
-    mmd_degree = eval.stats.degree_stats(graphs_real, graphsF)
-    mmd_clustering = eval.stats.clustering_stats(graphs_real, graphsF)
-    try:
-        mmd_4orbits = eval.stats.orbit_stats_all(graphs_real, graphsF)
-    except:
-        mmd_4orbits = -1
-    print(f'MMD degree: {mmd_degree:.3f}')
-    print(f'MMD clustering: {mmd_clustering:.3f}')
-    print(f'MMD 4orbits: {mmd_4orbits:.3f}')
-
-
-# evaluate_mmd(
-#     [x[-1] for x in test_graphs],
-#     [x[0] for x in test_graphs]
-# )
-
-
-def save_graphs(A, X, L, outdir):
-    print(f"\n==== Save graphs to {outdir}")
-    dataname = outdir.split("/")[-1]
-    if not os.path.isdir(outdir):
-        os.makedirs(outdir)
-    np.savetxt(outdir + f"/{dataname}.txt", A, fmt="%.4f", delimiter=" ")
-    with open(outdir + "/labels.txt", "w+") as fp:
-        for i, label in enumerate(L):
-            fp.write(f"{i} {label}\n")
-    np.savez_compressed(outdir + "/features.npz", features=X)
-    print("=== Done ===\n")
-
-
-# G(Atrain, Xtrain), Atrain = Asbm, Xtrain = Xsbm
-Af, X, L, Asbm = train_graphs[0]
-print('Atrain-Xtrain')
-print(f"Number of edges: {Asbm.sum()}")
-save_graphs(Asbm, X, L, f"data-transfers/synf-sbm-seed{args.seed}/Atrain-Xtrain")
-
-print('AtrainF-Xtrain')
-print(f"Number of edges: {Af.sum()}")
-save_graphs(Af, X, L, f"data-transfers/synf-sbm-seed{args.seed}/AtrainF-Xtrain")
-
-print('A2-Xtest')  # A2 = Af
-Af, X, L, _ = test_graphs[0]
-save_graphs(Af, X, L, f"data-transfers/synf-sbm-seed{args.seed}/A2-Xtest")
-
-print('A3-Xtest')  # A3 = KNN(X)
-_, X, L, _ = test_graphs[0]
-A3 = generate_graph(torch.FloatTensor(X), kind="knn", k=args.k)
-save_graphs(A3, X, L, f"data-transfers/synf-sbm-seed{args.seed}/A3-Xtest")
-
-print('A4-Xtest')  # A4 = Sigmoid(X)
-_, X, L, _ = test_graphs[0]
-A4 = generate_graph(torch.FloatTensor(X), kind="sigmoid", k=args.k)
-save_graphs(A4, X, L, f"data-transfers/synf-sbm-seed{args.seed}/A4-Xtest")
-
-print('Atest-Xtest')  # A4 = Sigmoid(X)
-_, X, L, Asbm = test_graphs[0]
-save_graphs(Asbm, X, L, f"data-transfers/synf-sbm-seed{args.seed}/Atest-Xtest")
+save_multiple_validation_graphs(f"data/gen-sbm-n{args.n}-p{args.p}-lam{args.lam}-mu{args.mu}", args.seed, train_graphs, test_graphs)

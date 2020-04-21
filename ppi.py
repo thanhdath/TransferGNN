@@ -1,3 +1,5 @@
+# ppi, learn and transfer from multi graphs
+
 import os.path as osp
 
 import torch
@@ -16,12 +18,14 @@ from sklearn.metrics import classification_report
 # from sage import SAGEConv
 
 import torch
+import torch.nn as nn
 import numpy as np
 import networkx as nx
 from scipy import sparse
 from sklearn.preprocessing import MultiLabelBinarizer
 from torch_geometric.data import NeighborSampler, Data
 import re
+from scipy.sparse import csr_matrix, vstack, hstack
 
 import json
 import networkx as nx
@@ -76,6 +80,109 @@ def remove_self_loops(edge_index, edge_attr=None):
 #         graphs_data.append((edge_index, x, y))
 #     return graphs_data, x.shape[1], y.shape[1]
 
+from scipy.sparse.linalg import svds
+def svd_features(graph, dim_size=128, alpha=0.5):
+    adj = nx.to_scipy_sparse_matrix(graph, dtype=np.float32)
+    if adj.shape[0] <= dim_size:
+        padding_row = csr_matrix(
+            (dim_size - adj.shape[0] + 1, adj.shape[1]), dtype=adj.dtype)
+        adj = vstack((adj, padding_row))
+        padding_col = csr_matrix(
+            (adj.shape[0], dim_size - adj.shape[1] + 1), dtype=adj.dtype)
+        adj = hstack((adj, padding_col))
+
+    U, X, _ = svds(adj, k=dim_size)
+    embedding = U * (X**(alpha))
+    features = {node: embedding[i] for i, node in enumerate(graph.nodes())}
+    return features
+
+import multiprocessing
+import numpy as np
+import multiprocessing
+import networkx as nx
+from gensim.models import Word2Vec
+
+def deepwalk_walk_wrapper(class_instance, walk_length, start_node):
+    class_instance.deepwalk_walk(walk_length, start_node)
+
+def deepwalk_walk(args):
+    '''
+    Simulate a random walk starting from start node.
+    '''
+    walk_length = args["walk_length"]
+    neibs = args["neibs"]
+    nodes = args["nodes"]
+    # if args["iter"] % 5 == 0:
+    print("Iter:", args["iter"]) # keep printing, avoid moving process to swap
+
+    walks = []
+    for node in nodes:
+        walk = [str(node)]
+        if len(neibs[node]) == 0:
+            walks.append(walk)
+            continue
+        while len(walk) < walk_length:
+            cur = int(walk[-1])
+            cur_nbrs = neibs[cur]
+            if len(cur_nbrs) == 0: break
+            walk.append(str(np.random.choice(cur_nbrs)))
+        walks.append(walk)
+    return walks
+
+
+class BasicWalker:
+    def __init__(self, G, workers):
+        self.G = G
+        if hasattr(G, 'neibs'):
+            self.neibs = G.neibs
+        else:
+            self.build_neibs_dict()
+
+
+    def build_neibs_dict(self):
+        self.neibs = {}
+        for node in self.G.nodes():
+            self.neibs[node] = list(self.G.neighbors(node))
+
+    def simulate_walks(self, num_walks, walk_length, num_workers):
+        pool = multiprocessing.Pool(processes=num_workers)
+        walks = []
+        print('Walk iteration:')
+        nodes = list(self.G.nodes())
+        nodess = [np.random.shuffle(nodes)]
+        for i in range(num_walks):
+            _ns = nodes.copy()
+            np.random.shuffle(_ns)
+            nodess.append(_ns)
+        params = list(map(lambda x: {'walk_length': walk_length, 'neibs': self.neibs, 'iter': x, 'nodes': nodess[x]},
+            list(range(1, num_walks+1))))
+        walks = pool.map(deepwalk_walk, params)
+        pool.close()
+        pool.join()
+        # walks = np.vstack(walks)
+        while len(walks) > 1:
+            walks[-2] = walks[-2] + walks[-1]
+            walks = walks[:-1]
+        walks = walks[0]
+
+        return walks
+import networkx as nx
+
+def deepwalk(G, dim_size, number_walks=20, walk_length=10, 
+    workers=multiprocessing.cpu_count()//3):
+    walk = BasicWalker(G, workers=workers)
+    sentences = walk.simulate_walks(num_walks=number_walks, walk_length=walk_length, num_workers=workers)
+    # for idx in range(len(sentences)):
+    #     sentences[idx] = [str(x) for x in sentences[idx]]
+
+    print("Learning representation...")
+    word2vec = Word2Vec(sentences=sentences, min_count=0, workers=workers,
+                            size=dim_size, sg=1)
+    vectors = {}
+    for word in G.nodes():
+        vectors[word] = word2vec.wv[str(word)]
+    return vectors
+
 def load_graph(input_dir):
     dataname = [x for x in input_dir.split("/") if len(x) > 0][-1]
     path = f"{input_dir}/{dataname}_graph.json"
@@ -97,28 +204,53 @@ def load_graph(input_dir):
         mask = idx == i
 
         G_s = G.subgraph(mask.nonzero().view(-1).tolist())
-        edge_index = torch.tensor(list(G_s.edges)).t().contiguous()
-        edge_index = edge_index - edge_index.min()
-        edge_index, _ = remove_self_loops(edge_index)
 
-        data = (edge_index, x[mask], y[mask])
+
+        # extra_features = svd_features(G_s)
+        # extra_features = deepwalk(G_s, 128, number_walks=40, walk_length=80)
+        # extra_features = np.array([extra_features[x] for x in G_s.nodes()])
+        # extra_features = torch.FloatTensor(extra_features)
+        # features = torch.cat([x[mask], extra_features], dim=1)
+        features = x[mask]
+
+        edge_index = torch.tensor(list(G_s.edges)).t().contiguous()
+        # try:
+        edge_attr = torch.FloatTensor([G_s.edges()[x]['weight'] for x in edge_index.t().numpy()])
+        #     print("Has edge attributes")
+        # except:
+        #     import pdb; pdb.set_trace()
+        #     print("No edge attributes")
+        #     edge_attr = None
+        edge_index = edge_index - edge_index.min()
+        edge_index, edge_attr = remove_self_loops(edge_index, edge_attr)
+        if args.th > 0:
+            keep_edges_index = [i for i in range(len(edge_attr)) if edge_attr[i] >= args.th]
+            edge_index = edge_index[:, keep_edges_index]
+            edge_attr = edge_attr[keep_edges_index]
+        print("Number of kept edges: ", len(edge_attr))
+        assert edge_index.shape[1] == edge_attr.shape[0], "edge shape error!"
+
+        data = (edge_index, features, y[mask], edge_attr)
         data_list.append(data)
-    return data_list, x.shape[1], y.shape[1]
+    return data_list, features.shape[1], y.shape[1]
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--transfer", default=None)
-parser.add_argument(
-    "--input-dir", default="../graphrnn/data-ppi/synf-seed104/Atrain-Xtrain/")
+parser.add_argument("--input-dir", default="../graphrnn/data-ppi/synf-seed104/Atrain-Xtrain/")
 parser.add_argument("--epochs", default=300, type=int)
 parser.add_argument("--hidden", default=64, type=int)
-parser.add_argument("--feature-only", action='store_true')
+parser.add_argument("--gat", action='store_true')
+parser.add_argument("--th", type=float, default=0)
 parser.add_argument("--seed", default=100, type=int)
 parser.add_argument("--is-test-graphs", action="store_true")
+# parser.add_argument('--sbm', action='store_true')
+parser.add_argument('--f', default="ori", choices=['ori', 'random'])
 args = parser.parse_args()
 np.random.seed(args.seed)
 torch.manual_seed(args.seed)
 args.multiclass = True
 graphs, num_features, num_classes = load_graph(args.input_dir)
+
 print("Num features:", num_features)
 print("Num classes:", num_classes)
 
@@ -127,61 +259,89 @@ if args.is_test_graphs:
     train_graphs = []
     val_graphs = graphs
     test_graphs = []
+    # gen adj on test dataset
+    if args.f != "ori":
+        converted_val_graphs = []
+        for edge_index, X, y, edge_attr in val_graphs:
+            k = edge_index.shape[1] // data.num_nodes
+            if args.f == "knn":
+                adj = generate_graph(X, kind="knn", k=k)
+            if args.f == "sigmoid":
+                adj = generate_graph(X, kind="sigmoid", k=k)
+            if args.f == "random":
+                G = connected_watts_strogatz_graph(X.shape[0], k+1, p=0.1)
+                adj = nx.to_numpy_matrix(G)
+            
+            src, trg = adj.nonzero()
+            edge_index = torch.LongTensor(np.concatenate([src.reshape(1, -1), trg.reshape(1,-1)], axis=0))
+            print(f"N edges before {edge_index.shape[1]} - N edges then {edge_index.shape[1]} ")
+            converted_val_graphs.append((edge_index, X, y, None))
+        val_graphs = converted_val_graphs
+    # else:
+    #     converted_test_dataset = test_dataset
 else:
+    # if args.sbm:
+    #     train_graphs = graphs[:-10]
+    #     val_graphs = graphs[-10:]
+    #     test_graphs = []
+    # else:
     train_graphs = graphs[:-2]
     val_graphs = graphs[-2:]
     test_graphs = []
 
+
 # GCN
 
+class GAT(torch.nn.Module):
+
+    def __init__(self):
+        super(GAT, self).__init__()
+        id_features_dim = 128
+        self.mapping = nn.Linear(num_features, id_features_dim)
+        self.conv1 = GATConv(id_features_dim, 256, heads=4)
+        self.lin1 = torch.nn.Linear(id_features_dim, 4 * 256)
+        self.conv2 = GATConv(4 * 256, 256, heads=4)
+        self.lin2 = torch.nn.Linear(4 * 256, 4 * 256)
+        self.conv3 = GATConv(4 * 256, num_classes, heads=6, concat=False)
+        self.lin3 = torch.nn.Linear(4 * 256, num_classes)
+
+    def forward(self, x, edge_index, edge_attr=None):
+        x = self.mapping(x)
+        x = F.elu(self.conv1(x, edge_index) + self.lin1(x))
+        x = F.elu(self.conv2(x, edge_index) + self.lin2(x))
+        x = self.conv3(x, edge_index) + self.lin3(x)
+        return x
 
 # class Net(torch.nn.Module):
+
 #     def __init__(self):
 #         super(Net, self).__init__()
 #         self.conv1 = GATConv(num_features, 256, heads=4)
 #         self.lin1 = torch.nn.Linear(num_features, 4 * 256)
-#         self.conv2 = GATConv(4 * 256, 256, heads=4)
-#         self.lin2 = torch.nn.Linear(4 * 256, 4 * 256)
-#         self.conv3 = GATConv(
-#             4 * 256, num_classes, heads=6, concat=False)
-#         self.lin3 = torch.nn.Linear(4 * 256, num_classes)
-
-#     def forward(self):
-#         x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
-#         x = F.elu(self.conv1(x, edge_index) + self.lin1(x))
-#         x = F.elu(self.conv2(x, edge_index) + self.lin2(x))
-#         x = self.conv3(x, edge_index) + self.lin3(x)
-#         if multiclass:
-#             return x
-#         return F.log_softmax(x, dim=1)
-
-# class Net(torch.nn.Module):
-
-#     def __init__(self):
-#         super(Net, self).__init__()
-#         self.conv1 = GATConv(num_features, 256, heads=4)
-#         self.lin1 = torch.nn.Linear(num_features, 4 * 256)
-#         self.conv2 = GATConv(4 * 256, 256, heads=4)
-#         self.lin2 = torch.nn.Linear(4 * 256, 4 * 256)
-#         self.conv3 = GATConv(
-#             4 * 256, num_classes, heads=6, concat=False)
-#         self.lin3 = torch.nn.Linear(4 * 256, num_classes)
+#         self.conv2 = GATConv(4 * 256, num_classes, heads=4, concat=False)
+#         self.lin2 = torch.nn.Linear(4 * 256, num_classes)
+#         # self.conv3 = GATConv(4 * 256, num_classes, heads=6, concat=False)
+#         # self.lin3 = torch.nn.Linear(4 * 256, num_classes)
 
 #     def forward(self, x, edge_index):
 #         x = F.elu(self.conv1(x, edge_index) + self.lin1(x))
-#         x = F.elu(self.conv2(x, edge_index) + self.lin2(x))
-#         x = self.conv3(x, edge_index) + self.lin3(x)
+#         x = self.conv2(x, edge_index) + self.lin2(x)
+#         # x = self.conv3(x, edge_index) + self.lin3(x)
 #         return x
 
-class Net(torch.nn.Module):
+
+class GraphsageMEAN(torch.nn.Module):
 
     def __init__(self):
-        super(Net, self).__init__()
-        self.conv1 = SAGEConv(num_features, args.hidden, normalize=False)
+        super(GraphsageMEAN, self).__init__()
+        id_features_dim = 128
+        self.mapping = nn.Linear(num_features, id_features_dim)
+        self.conv1 = SAGEConv(id_features_dim, args.hidden, normalize=False)
         self.conv2 = SAGEConv(args.hidden, args.hidden * 2, normalize=False)
         self.conv3 = SAGEConv(args.hidden * 2, num_classes, normalize=False)
 
-    def forward(self, x, edge_index):
+    def forward(self, x, edge_index, edge_attr=None):
+        x = self.mapping(x)
         x = self.conv1(x, edge_index)
         x = F.relu(x)
         x = F.dropout(x, training=self.training)
@@ -210,14 +370,20 @@ def train(train_graphs):
     model.train()
     inds = np.random.permutation(len(train_graphs))
     train_graphs = [train_graphs[x] for x in inds]
-    for edge_index, x, y in train_graphs:
+    for edge_index, x, y, edge_attr in train_graphs:
         edge_index = edge_index.to(device)
+        if edge_attr is not None:
+            edge_attr = edge_attr.to(device)
         x = x.to(device)
         y = y.to(device)
         optimizer.zero_grad()
-        outputs = model(x, edge_index)
+        outputs = model(x, edge_index, edge_attr=edge_attr)
         criterion(outputs, y).backward()
         optimizer.step()
+        edge_index = edge_index.cpu()
+        x = x.cpu()
+        y = y.cpu()
+        torch.cuda.empty_cache()
 
 
 def f1(output, labels, multiclass=False):
@@ -254,13 +420,20 @@ def test(graphs, n_randoms=None):
         inds = np.random.permutation(len(graphs))[:n_randoms]
         graphs = [graphs[x] for x in inds]
 
-    for edge_index, x, y in graphs:
+    for edge_index, x, y, edge_attr in graphs:
         edge_index = edge_index.to(device)
+        if edge_attr is not None:
+            edge_attr = edge_attr.to(device)
         x = x.to(device)
         y = y.to(device)
-        logits = model(x, edge_index)
+        logits = model(x, edge_index, edge_attr)
         logitss.append(logits)
         ys.append(y)
+
+        edge_index = edge_index.cpu()
+        x = x.cpu()
+        y = y.cpu()
+        torch.cuda.empty_cache()
     logitss = torch.cat(logitss, dim=0)
     ys = torch.cat(ys, dim=0)
     micro, macro = f1(logitss, ys, multiclass=True)
@@ -279,11 +452,14 @@ def getfilename(path):
     return path.split("/")[-1].split(".")[0]
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-if args.feature_only:
-    print("Using softmax regression")
-    model = SoftmaxRegression().to(device)
+# if args.feature_only:
+#     print("Using softmax regression")
+#     model = SoftmaxRegression().to(device)
+# else:
+if args.gat:
+    model = GAT().to(device)
 else:
-    model = Net().to(device)
+    model = GraphsageMEAN().to(device)
 lr = 0.005
 if args.transfer is not None:
     print("Load pretrained model", args.transfer)
@@ -345,21 +521,21 @@ for epoch in range(1, epochs):
 print("Best val acc: {:.3f}".format(best_val_acc))
 print("Model has been saved to", model_name)
 
-model.eval()
-with torch.no_grad():
-    logitss = []
-    ys = []
-    for edge_index, x, y in graphs:
-        edge_index = edge_index.to(device)
-        x = x.to(device)
-        y = y.to(device)
-        logits = model(x, edge_index)
-        logitss.append(logits)
-        ys.append(y)
-    preds = torch.cat(logitss, dim=0)
-    y = torch.cat(ys, dim=0)
-    # preds = torch.sigmoid(preds).cpu().numpy()
-    # preds[preds >= 0.5] = 1
-    # preds[preds < 0.5] = 0
-    preds = (preds > 0).float()
-    print(classification_report(y.cpu().numpy(), preds))
+# model.eval()
+# with torch.no_grad():
+#     logitss = []
+#     ys = []
+#     for edge_index, x, y in graphs:
+#         edge_index = edge_index.to(device)
+#         x = x.to(device)
+#         y = y.to(device)
+#         logits = model(x, edge_index)
+#         logitss.append(logits)
+#         ys.append(y)
+#     preds = torch.cat(logitss, dim=0)
+#     y = torch.cat(ys, dim=0)
+#     # preds = torch.sigmoid(preds).cpu().numpy()
+#     # preds[preds >= 0.5] = 1
+#     # preds[preds < 0.5] = 0
+#     preds = (preds > 0).float().cpu().numpy()
+#     print(classification_report(y.cpu().numpy(), preds))

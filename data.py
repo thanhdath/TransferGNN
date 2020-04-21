@@ -74,25 +74,25 @@ def load_graph(adj_file, feature_file, label_file, multiclass=None):
     multiclass_found = False
     conversion = None
 
-    # for i, line in enumerate(open(label_file)):
-    #     line = line.replace("[", "").replace("]", "")
-    #     line = re.split("\s+", line.strip())
-    #     node = i
-    #     # if len(line) == 1:
-    #     #     label = [labels2int["null"]]
-    #     # else:
-    #     #     label = [labels2int[i] for i in line[1:]]
-    #     if conversion is None:
-    #         try:
-    #             [int(x) for x in line[1:]]
-    #             conversion = int
-    #         except:
-    #             conversion = str
-    #     label = [conversion(x) for x in line[1:]]
-    #     if len(label) > 1:
-    #         multiclass_found = True
-    #     node2label[node] = label
-    node2label, multiclass = load_label(label_file)
+    for i, line in enumerate(open(label_file)):
+        line = line.replace("[", "").replace("]", "")
+        line = re.split("\s+", line.strip())
+        node = i
+        # if len(line) == 1:
+        #     label = [labels2int["null"]]
+        # else:
+        #     label = [labels2int[i] for i in line[1:]]
+        if conversion is None:
+            try:
+                [int(x) for x in line[1:]]
+                conversion = int
+            except:
+                conversion = str
+        label = [conversion(x) for x in line[1:]]
+        if len(label) > 1:
+            multiclass_found = True
+        node2label[node] = label
+    # node2label, multiclass = load_label(label_file)
 
     if multiclass is None:
         multiclass = multiclass_found

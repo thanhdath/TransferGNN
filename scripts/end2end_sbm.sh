@@ -37,3 +37,15 @@ do
             --transfer model/AtrainF-Xtrain.pkl --seed $seed --epochs 0 > $LOGDIR/$name-from-AtrainF-Xtrain.log
     done
 done 
+
+
+n=128
+p=8
+mkdir logs/end2end/
+for lam in 0 0.5 1 1.5 1.75 2
+do
+    for mu in 0 1 2 4 8 16
+    do
+        python -u end2end.py --n $n --p $p --lam $lam --mu $mu > logs/end2end/sbm-n$n-p$p-lam$lam-mu$mu.log
+    done
+done 

@@ -28,24 +28,44 @@ groups = {
 import sys
 logbase = sys.argv[1]
 
-for seed in range(100, 110):
-    logdir = "{}/synf-seed{}".format(logbase, seed)
+# for seed in range(100, 102):
+#     for i in range(20):
+#         logdir = "{}/synf-seed{}-{}".format(logbase, seed, i)
+#         if not os.path.isdir(logdir):
+#             print("Not found {}".format(logdir))
+#             continue
+#         files = os.listdir(logdir)
+#         files = [x for x in files if "from-" in x]
+#         for file in files:
+#             if file not in groups:
+#                 groups[file] = []
+#         for file in files:
+#             try:
+#                 content = open(logdir + "/" + file).read()
+#                 nofinetune = re.findall("Val: [0-9\.]+", content)[0]
+#                 nofinetune = float(nofinetune.replace("Val: ", ""))
+#                 groups[file].append(nofinetune)
+#             except:
+#                 continue
+
+for seed in range(100, 102):
+    logdir = "{}/synf-seed{}-multigraphs".format(logbase, seed)
     if not os.path.isdir(logdir):
         print("Not found {}".format(logdir))
         continue
-    try:
-        files = os.listdir(logdir)
-        files = [x for x in files if "from-" in x]
-        for file in files:
-            if file not in groups:
-                groups[file] = []
-        for file in files:
+    files = os.listdir(logdir)
+    files = [x for x in files if "from-" in x]
+    for file in files:
+        if file not in groups:
+            groups[file] = []
+    for file in files:
+        try:
             content = open(logdir + "/" + file).read()
             nofinetune = re.findall("Val: [0-9\.]+", content)[0]
             nofinetune = float(nofinetune.replace("Val: ", ""))
             groups[file].append(nofinetune)
-    except:
-        continue
+        except:
+            continue
 
 for key in sorted(groups.keys()):
     v = groups[key]
