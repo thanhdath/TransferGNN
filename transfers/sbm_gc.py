@@ -40,7 +40,7 @@ def gen_sbm():
         if i % 100 == 0:
             print(f"{i+1}/{args.n_graphs}")
         Asbm, X, L = gen_graph(n=args.n, p=args.p, lam=args.lam, mu=args.mu, u=u)
-        Asbm[np.arange(len(Asbm)), np.arange(len(Asbm))] = 0
+        # Asbm[np.arange(len(Asbm)), np.arange(len(Asbm))] = 0
         src, trg = Asbm.nonzero()
         edge_index = torch.LongTensor(np.concatenate([src.reshape(1, -1), trg.reshape(1,-1)], axis=0))
         features = torch.FloatTensor(X)
@@ -82,7 +82,7 @@ parser.add_argument("--f", choices=["ori", "knn", "sigmoid", "random"])
 args = parser.parse_args()
 np.random.seed(args.seed)
 torch.manual_seed(args.seed)
-
+ 
 args.multiclass = False
 num_features = args.p 
 num_classes = 2
