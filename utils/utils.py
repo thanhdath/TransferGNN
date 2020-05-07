@@ -16,21 +16,21 @@ def sra(A, C):
     return sra
 
 A = """
-0.5346
-0.9365
-0.3897
-0.4978
-0.5478
+0.918+-0.006
+0.901+-0.011
+0.917+-0.007
+0.907+-0.010
+0.911+-0.010
 """
 C = """
-0.4155
-0.548
-0.3937
-0.4134
-0.4067
+0.625+-0.007
+0.737+-0.013
+0.621+-0.010
+0.673+-0.009
+0.672+-0.009
 """
 
-A = [float(x) for x in A.strip().split("\n")]
-C = [float(x) for x in C.strip().split("\n")]
+A = [float(x.split("+-")[0]) for x in A.strip().split("\n")]
+C = [float(x.split("+-")[0]) for x in C.strip().split("\n")]
 
 print(sra(A, C))

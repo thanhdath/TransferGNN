@@ -124,3 +124,44 @@ do
             --epochs 300 --setting $setting --th 0.5 --model $model --multiclass --num_features 50 --num_labels 121 --batch_size 4 --hidden 64  > logs/ppi-gran/$model-setting-$setting.log
     done
 done 
+
+# TEST TRANSFER WITH 4 SETTINGS - SBM
+data=sbm
+f=graphrnn
+mkdir logs/$data-$f
+for seed in 100 101 102 103 104
+do
+    mkdir logs/$data-$f/seed$seed
+    path=/home/datht/graphrnn/ckpt-sbm-seed$seed/graphs/sbm_graphrnn.pkl
+    for setting in A B C D 
+    do
+        for model in mean sum gcn sgc gat
+        do
+            echo $setting-$model 
+            python -u compare_modelf.py --data-path $path \
+                --epochs 300 --setting $setting --th 0.5 --model $model \
+                --num_features 8 --num_labels 2 --batch_size 32 \
+                --hidden 64  > logs/$data-$f/seed$seed/$model-setting-$setting.log
+        done
+    done 
+done 
+
+data=sbm
+f=gran
+mkdir logs/$data-$f
+for seed in 100 101 102 103 104
+do
+    mkdir logs/$data-$f/seed$seed
+    path=/home/datht/gran/exp/sbm-seed100/GRANMixtureBernoulli_sbm/sbm_gran.pkl
+    for setting in A B C D 
+    do
+        for model in mean sum gcn sgc gat
+        do
+            echo $setting-$model 
+            python -u compare_modelf.py --data-path $path \
+                --epochs 300 --setting $setting --th 0.5 --model $model \
+                --num_features 8 --num_labels 2 --batch_size 32 \
+                --hidden 64  > logs/$data-$f/seed$seed/$model-setting-$setting.log
+        done
+    done 
+done 

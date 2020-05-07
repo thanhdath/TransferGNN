@@ -206,12 +206,11 @@ def load_graph(data_path):
             features = np.array([g.nodes()[x]['features']
                                  for x in g.nodes()])[:, :args.num_features]
             labels = np.array([g.nodes()[x]['label'] for x in g.nodes()])
-            if len(labels.shape) == 2:
+            if args.multiclass:
                 labels = torch.FloatTensor(labels)
-            #     # labels = labels.reshape(-1)
-            #     labels = labels.argmax(axis=1)
-                # assert labels.shape[0] == features.shape[0], "Error! Multilabel"
             else:
+                if len(labels.shape) == 2: # onehot vector
+                    labels = labels.argmax(axis=1)
                 labels = torch.LongTensor(labels)
             data.append((torch.LongTensor(edge_index), torch.FloatTensor(features), labels))
         return data

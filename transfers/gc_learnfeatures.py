@@ -136,7 +136,11 @@ class GIN(torch.nn.Module):
     def __repr__(self):
         return self.__class__.__name__
 
-def pred_adj(all_embeddings, batch):
+def get_upper_triangle_matrix_except_diagonal(matrix):
+    inds = np.triu_indices(len(matrix), 1)
+    return matrix[inds[0], inds[1]]
+
+def pred_adj(all_embeddings, batch, upper_triangle=False): # upper triangle except diagonal
     graph_ids = np.unique(batch.cpu().numpy())
     pred_adjs = []
     for id in graph_ids:
@@ -146,6 +150,8 @@ def pred_adj(all_embeddings, batch):
         D /= np.sqrt(embeddings.shape[1])
         r = 10
         adj = torch.sigmoid(r * (1-D))
+        if upper_diagonal:
+            adj = get_upper_triangle_matrix_except_diagonal(adj)
         pred_adjs.append(adj)
     return torch.stack(pred_adjs)
 
@@ -163,8 +169,8 @@ def train(epoch):
         batch = batch.to(device)
         optimizer.zero_grad()
         embeddings, x = model(x, edge_index, batch)
-        p_adj = pred_adj(embeddings, batch)
-        loss_adj = criterion_adj(p_adj, adj)
+        p_adj = pred_adj(embeddings, batch, upper_triangle=True)
+        loss_adj = criterion_adj(p_adj, get_upper_triangle_matrix_except_diagonal(adj))
         loss_classify = F.nll_loss(x, y.view(-1))
         loss = loss_adj * args.adj_weight + loss_classify*args.classify_weight 
         loss.backward()

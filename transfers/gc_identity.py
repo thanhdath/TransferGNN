@@ -222,9 +222,6 @@ def init_features(data, features_dim):
     new_data = Data(x=x, y=data.y, edge_index=data.edge_index, edge_attr=data.edge_attr)
     return new_data
 
-
-prep_dataset = []
-
 if init == "degree-onehot":
     max_deg = -1
     for data in dataset:
@@ -244,7 +241,7 @@ if init != "real":
 #     os.makedirs("features_init")
 # pickle.dump(dataset, open(f"features_init/{name}-{init}-seed{args.seed}.pkl", "wb"))
 
-inds = np.random.permutation(len(dataset))
+inds = np.random.permutation(len(dataset)).tolist()
 dataset = [dataset[x] for x in inds]
 test_dataset = dataset[:len(dataset) // 10]
 train_dataset = dataset[len(dataset) // 10:]

@@ -22,13 +22,6 @@ do
     done 
 done
 
-mkdir logs
-for data in AIDS BZR BZR_MD COIL-DEL COLLAB COX2 DBLP_v1 DHFR DD ENZYMES FRANKENSTEIN IMDB-BINARY IMDB-MULTI Letter-high Mutagenicity MSRC_21 MUTAG NCI109 PROTEINS REDDIT-BINARY       
-do
-    mkdir logs/$data
-    python -u gc_learnfeatures.py --data $data > logs/$data/learn.log
-done 
-
 mkdir logs/gc
 for seed in $(seq 100 109)
 do 
@@ -55,12 +48,12 @@ done
 
 # GRAPH CLASSIFICATION INIT FEATURES
 mkdir logs/gc
-for seed in $(seq 100 100)
+for seed in $(seq 100 104)
 do
     mkdir logs/gc/syn-seed$seed
     for data in DD DHFR ENZYMES FRANKENSTEIN IMDB-BINARY PROTEINS REDDIT-BINARY
     do
-        for init in svd degree kcore triangle
+        for init in real random
         do
             echo $data-$init
             python -u transfers/gc_identity.py --data $data --init $init --seed $seed > logs/gc/syn-seed$seed/$data-$init.log
@@ -68,27 +61,18 @@ do
     done 
 done
 
-
 # GRAPH CLASSIFICATION LEARN FEATURES + RECONSTRUCTION LOSS
 mkdir logs
 mkdir logs/gc-learnfeatures
-for seed in $(seq 101 104)
+for seed in $(seq 100 104)
 do
     mkdir logs/gc-learnfeatures/seed$seed
-    for data in DHFR ENZYMES FRANKENSTEIN IMDB-BINARY PROTEINS REDDIT-BINARY   
+    for data in DD DHFR ENZYMES FRANKENSTEIN IMDB-BINARY PROTEINS    
     do
         echo $data
         python -u transfers/gc_learnfeatures.py --name $data --seed $seed > logs/gc-learnfeatures/seed$seed/$data.log
     done 
 done
 
-
+REDDIT-BINARY
 tmux a -t 1
-
-
-CUDA=cu101
-pip install torch-scatter==latest+${CUDA} -f https://pytorch-geometric.com/whl/torch-1.4.0.html
-pip install torch-sparse==latest+${CUDA} -f https://pytorch-geometric.com/whl/torch-1.4.0.html
-pip install torch-cluster==latest+${CUDA} -f https://pytorch-geometric.com/whl/torch-1.4.0.html
-pip install torch-spline-conv==latest+${CUDA} -f https://pytorch-geometric.com/whl/torch-1.4.0.html
-pip install torch-geometric
