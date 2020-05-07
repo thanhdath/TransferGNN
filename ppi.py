@@ -7,7 +7,6 @@ import torch.nn.functional as F
 from torch_geometric.datasets import Planetoid
 import torch_geometric.transforms as T
 from torch_geometric.nn import ChebConv, GATConv, GCNConv, SAGEConv
-from data import load_graph
 import argparse
 import os
 from sklearn.metrics import f1_score
@@ -26,7 +25,7 @@ from sklearn.preprocessing import MultiLabelBinarizer
 from torch_geometric.data import NeighborSampler, Data
 import re
 from scipy.sparse import csr_matrix, vstack, hstack
-
+import pickle
 import json
 import networkx as nx
 from networkx.readwrite import json_graph
@@ -49,36 +48,6 @@ def remove_self_loops(edge_index, edge_attr=None):
     edge_index = edge_index[:, mask]
 
     return edge_index, edge_attr
-
-
-# def load_graph(input_dir, multiclass=None):
-#     dataname = [x for x in input_dir.split("/") if len(x) > 0][-1]
-#     graph_file = f"{input_dir}/{dataname}_graph.json"
-#     graph_data = json.load(open(graph_file))
-#     G = json_graph.node_link_graph(graph_data)
-
-#     graph_id_file = f"{input_dir}/graph_id.npy"
-#     graph_ids = np.load(graph_id_file)
-#     nodes = np.array(sorted(G.nodes()))
-
-#     feature_file = f"{input_dir}/feats.npy"
-#     features = np.load(feature_file)
-
-#     label_file = f"{input_dir}/labels.npy"
-#     labels = np.load(label_file)
-
-#     graphs_data = []
-#     for id in set(graph_ids):
-#         subgraph_nodes = nodes[graph_ids == id]
-#         subgraph = G.subgraph(subgraph_nodes)
-#         x = torch.FloatTensor(features[subgraph_nodes])
-#         y = torch.FloatTensor(labels[subgraph_nodes])
-#         mapping = {id: i for i, id in enumerate(subgraph_nodes)}
-#         subgraph = nx.relabel_nodes(subgraph, mapping)
-#         edge_index = torch.LongTensor(np.array(subgraph.edges())).t()
-#         edge_index, _ = remove_self_loops(edge_index)
-#         graphs_data.append((edge_index, x, y))
-#     return graphs_data, x.shape[1], y.shape[1]
 
 from scipy.sparse.linalg import svds
 def svd_features(graph, dim_size=128, alpha=0.5):
@@ -184,10 +153,15 @@ def deepwalk(G, dim_size, number_walks=20, walk_length=10,
     return vectors
 
 def load_graph(input_dir):
+    # dataname = [x for x in input_dir.split("/") if len(x) > 0][-1]
+    # path = f"{input_dir}/{dataname}_graph.json"
+    # with open(path, 'r') as f:
+    #     G = nx.DiGraph(json_graph.node_link_graph(json.load(f)))
     dataname = [x for x in input_dir.split("/") if len(x) > 0][-1]
-    path = f"{input_dir}/{dataname}_graph.json"
-    with open(path, 'r') as f:
-        G = nx.DiGraph(json_graph.node_link_graph(json.load(f)))
+    path = f"{input_dir}/{dataname}_graph.pkl"
+    with open(path, 'rb') as f:
+        # G = nx.DiGraph(json_graph.node_link_graph(json.load(f)))
+        G = pickle.load(f)
 
     x = np.load(f"{input_dir}/feats.npy")
     x = torch.from_numpy(x).to(torch.float)
@@ -230,7 +204,7 @@ def load_graph(input_dir):
         print("Number of kept edges: ", len(edge_attr))
         assert edge_index.shape[1] == edge_attr.shape[0], "edge shape error!"
 
-        data = (edge_index, features, y[mask], edge_attr)
+        data = (edge_index, features, y[mask], edge_attr) 
         data_list.append(data)
     return data_list, features.shape[1], y.shape[1]
 
@@ -300,7 +274,7 @@ class GAT(torch.nn.Module):
         self.mapping = nn.Linear(num_features, id_features_dim)
         self.conv1 = GATConv(id_features_dim, 256, heads=4)
         self.lin1 = torch.nn.Linear(id_features_dim, 4 * 256)
-        self.conv2 = GATConv(4 * 256, 256, heads=4)
+        self.conv2 = GATConv(4 * 256, 256, heads=4) 
         self.lin2 = torch.nn.Linear(4 * 256, 4 * 256)
         self.conv3 = GATConv(4 * 256, num_classes, heads=6, concat=False)
         self.lin3 = torch.nn.Linear(4 * 256, num_classes)

@@ -10,25 +10,14 @@ do
 done 
 
 mkdir logs/gc
-mkdir logs/gc/syn-seed100
-mkdir logs/gc/syn-seed101
-mkdir logs/gc/syn-seed102
-mkdir logs/gc/syn-seed103
-mkdir logs/gc/syn-seed104
-for data in AIDS BZR BZR_MD COIL-DEL COLLAB COX2 DBLP_v1 DHFR DD ENZYMES FRANKENSTEIN IMDB-BINARY IMDB-MULTI Letter-high Mutagenicity MSRC_21 MUTAG NCI109 PROTEINS REDDIT-BINARY       
+for seed in $(seq 102 102)
 do
-    for init in triangle
+    mkdir logs/gc/syn-seed$seed
+    for data in BZR BZR_MD COIL-DEL COLLAB COX2 DBLP_v1 DHFR DD ENZYMES FRANKENSTEIN IMDB-BINARY IMDB-MULTI Letter-high Mutagenicity MSRC_21 MUTAG NCI109 PROTEINS REDDIT-BINARY       
     do
-        python -u gc.py --data $data --init $init --seed $seed > logs/gc/syn-seed$seed/$data-$init.log
-    done
-done 
-for seed in $(seq 100 104)
-do
-    for data in AIDS BZR BZR_MD COIL-DEL COLLAB COX2 DBLP_v1 DHFR DD ENZYMES FRANKENSTEIN IMDB-BINARY IMDB-MULTI Letter-high Mutagenicity MSRC_21 MUTAG NCI109 PROTEINS REDDIT-BINARY       
-    do
-        for init in random
+        for init in svd degree kcore triangle deepwalk one
         do
-            python -u gc.py --data $data --init $init --seed $seed > logs/gc/syn-seed$seed/$data-$init.log
+            python -u transfers/gc_identity.py --data $data --init $init --seed $seed > logs/gc/syn-seed$seed/$data-$init.log
         done
     done 
 done
@@ -64,4 +53,42 @@ do
     python -u ppi_withoutf.py --f $f --seed $seed > logs/ppi-withoutf/synf-seed$seed/$f.log
 done 
 
+# GRAPH CLASSIFICATION INIT FEATURES
+mkdir logs/gc
+for seed in $(seq 100 100)
+do
+    mkdir logs/gc/syn-seed$seed
+    for data in DD DHFR ENZYMES FRANKENSTEIN IMDB-BINARY PROTEINS REDDIT-BINARY
+    do
+        for init in svd degree kcore triangle
+        do
+            echo $data-$init
+            python -u transfers/gc_identity.py --data $data --init $init --seed $seed > logs/gc/syn-seed$seed/$data-$init.log
+        done
+    done 
+done
 
+
+# GRAPH CLASSIFICATION LEARN FEATURES + RECONSTRUCTION LOSS
+mkdir logs
+mkdir logs/gc-learnfeatures
+for seed in $(seq 101 104)
+do
+    mkdir logs/gc-learnfeatures/seed$seed
+    for data in DHFR ENZYMES FRANKENSTEIN IMDB-BINARY PROTEINS REDDIT-BINARY   
+    do
+        echo $data
+        python -u transfers/gc_learnfeatures.py --name $data --seed $seed > logs/gc-learnfeatures/seed$seed/$data.log
+    done 
+done
+
+
+tmux a -t 1
+
+
+CUDA=cu101
+pip install torch-scatter==latest+${CUDA} -f https://pytorch-geometric.com/whl/torch-1.4.0.html
+pip install torch-sparse==latest+${CUDA} -f https://pytorch-geometric.com/whl/torch-1.4.0.html
+pip install torch-cluster==latest+${CUDA} -f https://pytorch-geometric.com/whl/torch-1.4.0.html
+pip install torch-spline-conv==latest+${CUDA} -f https://pytorch-geometric.com/whl/torch-1.4.0.html
+pip install torch-geometric

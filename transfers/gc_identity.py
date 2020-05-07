@@ -239,17 +239,17 @@ if init != "real":
     num_features = args.features_dim
     dataset = [init_features(data, args.features_dim) for data in dataset]
 
-import pickle
-if not os.path.isdir("features_init"):
-    os.makedirs("features_init")
-pickle.dump(dataset, open(f"features_init/{name}-{init}-seed{args.seed}.pkl", "wb"))
+# import pickle
+# if not os.path.isdir("features_init"):
+#     os.makedirs("features_init")
+# pickle.dump(dataset, open(f"features_init/{name}-{init}-seed{args.seed}.pkl", "wb"))
 
 inds = np.random.permutation(len(dataset))
 dataset = [dataset[x] for x in inds]
 test_dataset = dataset[:len(dataset) // 10]
 train_dataset = dataset[len(dataset) // 10:]
 test_loader = DataLoader(test_dataset, batch_size=64)
-train_loader = DataLoader(train_dataset, batch_size=64)
+train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
 
 
 class GIN(torch.nn.Module):

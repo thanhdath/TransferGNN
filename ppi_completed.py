@@ -27,7 +27,7 @@ from sklearn.preprocessing import MultiLabelBinarizer
 from torch_geometric.data import NeighborSampler, Data
 import re
 from scipy.sparse import csr_matrix, vstack, hstack
-
+import pickle
 import json
 import networkx as nx
 from networkx.readwrite import json_graph
@@ -186,9 +186,10 @@ def deepwalk(G, dim_size, number_walks=20, walk_length=10,
 
 def load_graph(input_dir):
     dataname = [x for x in input_dir.split("/") if len(x) > 0][-1]
-    path = f"{input_dir}/{dataname}_graph.json"
-    with open(path, 'r') as f:
-        G = nx.DiGraph(json_graph.node_link_graph(json.load(f)))
+    path = f"{input_dir}/{dataname}_graph.pkl"
+    with open(path, 'rb') as f:
+        # G = nx.DiGraph(json_graph.node_link_graph(json.load(f)))
+        G = pickle.load(f)
 
     x = np.load(f"{input_dir}/feats.npy")
     x = torch.from_numpy(x).to(torch.float)

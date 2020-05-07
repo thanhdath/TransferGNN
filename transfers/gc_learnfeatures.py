@@ -24,8 +24,36 @@ class CustomDataLoader():
             random.shuffle(self.datalist)
     def __len__(self):
         return len(self.datalist)
+    def reset_idx(self):
+        self.cur_idx = 0
+    def get_graphs(self, datalist):
+        edges = []
+        adjs = []
+        xs = []
+        ys = []
+        batch = []
+        inc = 0
+        for i, data in enumerate(datalist):
+            edge_index = data.edge_index + inc
+            x = data.x
+            y = data.y
+            inc += data.num_nodes
+            adj = torch.zeros((data.num_nodes, data.num_nodes))
+            adj[data.edge_index[0], data.edge_index[1]] = 1
+            adjs.append(adj)
+            edges.append(edge_index)
+            xs.append(x)
+            ys.append(y)
+            batch += [i]*data.num_nodes
+        edges = torch.cat(edges, dim=1)
+        xs = torch.cat(xs, dim=0)
+        ys = torch.cat(ys, dim=0)
+        batch = torch.LongTensor(batch)
+        adjs = torch.stack(adjs)
+        return xs, ys, edges, adjs, batch
+
     def get_next_batch(self):
-        if self.cur_idx + self.batch_size +1 > len(self.datalist):
+        if self.cur_idx + self.batch_size + 1 > len(self.datalist):
             if self.shuffle:
                 random.shuffle(self.datalist)
             self.cur_idx = 0
@@ -151,7 +179,8 @@ def test(loader):
 
     n_iters = int(np.ceil(len(loader) / args.batch_size))
     for iter in range(n_iters):
-        x, y, edge_index, adj, batch = loader.get_next_batch()
+        batch_datalist = loader.datalist[iter*args.batch_size:(iter+1)*args.batch_size]
+        x, y, edge_index, adj, batch = loader.get_graphs(batch_datalist)
         x = x.to(device)
         y = y.to(device)
         adj = adj.to(device)
@@ -159,12 +188,14 @@ def test(loader):
         batch = batch.to(device)
         embeddings, pred = model(x, edge_index, batch)
         pred = pred.max(dim=1)[1]
-        correct += pred.eq(y.view(-1)).sum().item()
+        assert pred.shape[0] == y.shape[0], "wrong shape"
+        correct += (pred == y).sum().item()
     return correct / len(loader)
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--features-dim', default=64, type=int)
+parser.add_argument('--features-dim', default=128, type=int)
 parser.add_argument('--batch-size', default=64, type=int)
+parser.add_argument('--epochs', default=200, type=int)
 parser.add_argument('--name', default='IMDB-BINARY')
 parser.add_argument('--adj-weight', default=1, type=float)
 parser.add_argument('--classify-weight', default=1, type=float)
@@ -196,12 +227,9 @@ for data in dataset:
     prep_dataset.append(new_data)
 dataset = prep_dataset
 
-n = (len(dataset) + 9) // 10
 test_dataset = dataset[:len(dataset) // 10]
 train_dataset = dataset[len(dataset) // 10:]
-
-train_loader = CustomDataLoader(train_dataset, batch_size=args.batch_size, shuffle=False)
-# val_loader = CustomDataLoader(val_dataset, batch_size=args.batch_size)
+train_loader = CustomDataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
 test_loader = CustomDataLoader(test_dataset, batch_size=args.batch_size)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -211,25 +239,10 @@ optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 criterion_adj = torch.nn.BCELoss()
 
 
-# best_val_acc = test_acc = 0
-# for epoch in range(1, 201):
-#     train_loss = train(epoch)
-#     if epoch% 20 == 0:
-#         val_acc = test(val_loader)
-#         if val_acc > best_val_acc:
-#             test_acc = test(test_loader)
-#             best_val_acc = val_acc
-#             torch.save(model.state_dict(), model_name)
-#         print('Epoch: {:03d}, Train Loss: {:.3f}, '
-#             'Val Acc: {:.3f}, Test Acc: {:.3f}'.format(epoch, train_loss,
-#                                                         val_acc, test_acc))
-for epoch in range(1, 201):
+for epoch in range(1, args.epochs + 1):
     train_loss = train(epoch)
     if epoch% 20 == 0:
+        train_acc = test(train_loader)
         test_acc = test(test_loader)
-        print('Epoch: {:03d}, Train Loss: {:.3f}, Test Acc: {:.3f}'.format(epoch, train_loss, test_acc))
-
-# model.load_state_dict(torch.load(model_name))
-# test_acc = test(test_loader)
-# print(f'Test Acc: {test_acc:.3f}')
-# test_accs.append(test_acc)
+        print('Epoch: {:03d}, Train Loss: {:.3f}, Train Acc: {:.3f}, Test Acc: {:.3f}'.format(
+            epoch, train_loss, train_acc, test_acc))
