@@ -13,6 +13,7 @@ import torch.nn as nn
 import numpy as np
 from types import SimpleNamespace
 import argparse
+import os
 
 class CustomDataLoader():
     def __init__(self, datalist, batch_size=20, shuffle=False):
@@ -150,7 +151,7 @@ def pred_adj(all_embeddings, batch, upper_triangle=False): # upper triangle exce
         D /= np.sqrt(embeddings.shape[1])
         r = 10
         adj = torch.sigmoid(r * (1-D))
-        if upper_diagonal:
+        if upper_triangle:
             adj = get_upper_triangle_matrix_except_diagonal(adj)
         pred_adjs.append(adj)
     return torch.stack(pred_adjs)
@@ -170,7 +171,7 @@ def train(epoch):
         optimizer.zero_grad()
         embeddings, x = model(x, edge_index, batch)
         p_adj = pred_adj(embeddings, batch, upper_triangle=True)
-        loss_adj = criterion_adj(p_adj, get_upper_triangle_matrix_except_diagonal(adj))
+        loss_adj = criterion_adj(p_adj, torch.stack([get_upper_triangle_matrix_except_diagonal(x) for x in adj]))
         loss_classify = F.nll_loss(x, y.view(-1))
         loss = loss_adj * args.adj_weight + loss_classify*args.classify_weight 
         loss.backward()
@@ -221,7 +222,6 @@ for data in dataset:
     max_nodes = max(max_nodes, data.num_nodes)
 print("Max num nodes: ", max_nodes)
 dataset.transform = T.ToDense(max_nodes)
-dataset = dataset.shuffle()
 num_classes = dataset.num_classes
 
 prep_dataset = []
@@ -233,10 +233,16 @@ for data in dataset:
     prep_dataset.append(new_data)
 dataset = prep_dataset
 
-test_dataset = dataset[:len(dataset) // 10]
-train_dataset = dataset[len(dataset) // 10:]
-train_loader = CustomDataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-test_loader = CustomDataLoader(test_dataset, batch_size=args.batch_size)
+inds = np.random.permutation(len(dataset)).tolist()
+dataset = [dataset[x] for x in inds]
+n_train = int(len(dataset)*0.8)
+n_val = int(len(dataset)*0.1)
+train_dataset = dataset[:n_train]
+val_dataset = dataset[n_train:n_train+n_val]
+test_dataset = dataset[n_train+n_val:]
+train_loader = CustomDataLoader(train_dataset, batch_size=64, shuffle=True)
+val_loader = CustomDataLoader(val_dataset, batch_size=64)
+test_loader = CustomDataLoader(test_dataset, batch_size=64)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = GIN(5, args.hidden).to(device)
@@ -244,11 +250,19 @@ print(model)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 criterion_adj = torch.nn.BCELoss()
 
+model_name = f"model/{args.name}-learnfeatures-seed{args.seed}.pkl"
+if not os.path.isdir('model'):
+    os.makedirs('model')
 
+best_val_acc = 0
 for epoch in range(1, args.epochs + 1):
     train_loss = train(epoch)
-    if epoch% 20 == 0:
-        train_acc = test(train_loader)
-        test_acc = test(test_loader)
-        print('Epoch: {:03d}, Train Loss: {:.3f}, Train Acc: {:.3f}, Test Acc: {:.3f}'.format(
-            epoch, train_loss, train_acc, test_acc))
+    if epoch%10 == 0:
+        val_acc = test(val_loader)
+        if val_acc > best_val_acc:
+            torch.save(model.state_dict(), model_name)
+            best_val_acc = val_acc
+        print('Epoch: {:03d}, Train Loss: {:.7f}, Val Acc: {:.7f}'.format(epoch, train_loss, val_acc))
+model.load_state_dict(torch.load(model_name))
+test_acc = test(test_loader)
+print(f'Test Acc: {test_acc:.3f}')

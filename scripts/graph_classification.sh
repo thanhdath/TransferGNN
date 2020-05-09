@@ -53,7 +53,7 @@ do
     mkdir logs/gc/syn-seed$seed
     for data in DD DHFR ENZYMES FRANKENSTEIN IMDB-BINARY PROTEINS REDDIT-BINARY
     do
-        for init in real random
+        for init in real svd degree degree-standard triangle kcore
         do
             echo $data-$init
             python -u transfers/gc_identity.py --data $data --init $init --seed $seed > logs/gc/syn-seed$seed/$data-$init.log

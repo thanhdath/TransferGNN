@@ -125,7 +125,49 @@ do
     done
 done 
 
+# TEMPORARILY
+data=sbm
+f=gnf
+mkdir logs/$data-$f-deepwalk
+for seed in 100
+do
+    mkdir logs/$data-$f-deepwalk/seed$seed
+    path=/home/datht/gnf/ckpt-sbm/n128-p8-lam1.5-mu8.0-deepwalk-seed$seed/gnf/gnf_generated_graphs.pkl
+    for setting in A B C D 
+    do
+        for model in mean sum gcn sgc gat
+        do
+            echo $setting-$model 
+            python -u compare_modelf.py --data-path $path \
+                --epochs 300 --setting $setting --th 0.5 --model $model \
+                --num_features 40 --num_labels 2 --batch_size 32 \
+                --hidden 64  > logs/$data-$f-deepwalk/seed$seed/$model-setting-$setting.log
+        done
+    done 
+done 
+
+
 # TEST TRANSFER WITH 4 SETTINGS - SBM
+data=sbm
+f=gnf
+mkdir logs/$data-$f
+for seed in 100 101 102 103 104
+do
+    mkdir logs/$data-$f/seed$seed
+    path=/home/datht/gnf/ckpt-sbm/n256-p8-lam1.5-mu8.0-seed$seed/gnf/gnf_generated_graphs.pkl
+    for setting in A B C D 
+    do
+        for model in mean sum gcn sgc gat
+        do
+            echo $setting-$model 
+            python -u compare_modelf.py --data-path $path \
+                --epochs 300 --setting $setting --th 0.5 --model $model \
+                --num_features 8 --num_labels 2 --batch_size 32 \
+                --hidden 64  > logs/$data-$f/seed$seed/$model-setting-$setting.log
+        done
+    done 
+done 
+
 data=sbm
 f=graphrnn
 mkdir logs/$data-$f
@@ -165,3 +207,88 @@ do
         done
     done 
 done 
+
+
+# TEST TRANSFER WITH 4 SETTINGS - PROTEINS
+data=proteins_full
+f=gnf
+mkdir logs/$data-$f
+for seed in 101 102 103 104
+do
+    mkdir logs/$data-$f/seed$seed
+    path=/home/datht/gnf/ckpt-proteins/seed$seed/gnf/gnf_generated_graphs.pkl
+    for setting in A B C D 
+    do
+        for model in mean sum gcn sgc gat
+        do
+            echo $setting-$model 
+            python -u compare_modelf.py --data-path $path \
+                --epochs 300 --setting $setting --th 0.5 --model $model \
+                --num_features 29 --num_labels 3 --batch_size 64 \
+                --hidden 64 > logs/$data-$f/seed$seed/$model-setting-$setting.log
+        done
+    done 
+done 
+
+data=proteins_full
+f=graphrnn
+mkdir logs/$data-$f
+for seed in 100 101 102 103 104
+do
+    mkdir logs/$data-$f/seed$seed
+    path=/home/datht/graphrnn/ckpt-proteins-seed$seed/graphs/sbm_graphrnn.pkl
+    for setting in A B C D 
+    do
+        for model in mean sum gcn sgc gat
+        do
+            echo $setting-$model 
+            python -u compare_modelf.py --data-path $path \
+                --epochs 300 --setting $setting --th 0.5 --model $model \
+                --num_features 29 --num_labels 3 --batch_size 64 \
+                --hidden 64 > logs/$data-$f/seed$seed/$model-setting-$setting.log
+        done
+    done 
+done 
+
+data=proteins_full
+f=gran
+mkdir logs/$data-$f
+for seed in 100 101 102 103 104
+do
+    mkdir logs/$data-$f/seed$seed
+    path=/home/datht/gran/exp/proteins_full-seed$seed/GRANMixtureBernoulli_proteins_full/sbm_gran.pkl
+    for setting in A B C D 
+    do
+        for model in mean sum gcn sgc gat
+        do
+            echo $setting-$model 
+            python -u compare_modelf.py --data-path $path \
+                --epochs 300 --setting $setting --th 0.5 --model $model \
+                --num_features 29 --num_labels 3 --batch_size 64 \
+                --hidden 64 > logs/$data-$f/seed$seed/$model-setting-$setting.log
+        done
+    done 
+done 
+
+# TEST TRANSFER WITH 4 SETTINGS - PPI
+
+data=ppi
+f=gran
+mkdir logs/$data-$f
+for seed in 100 101 102 103 104
+do
+    mkdir logs/$data-$f/seed$seed
+    path=/home/datht/gran/exp/ppi-seed$seed/GRANMixtureBernoulli_ppi/sbm_gran.pkl
+    for setting in A B C D 
+    do
+        for model in gat
+        do
+            echo $setting-$model 
+            python -u compare_modelf.py --multiclass --data-path $path \
+                --epochs 300 --setting $setting --th 0.5 --model $model \
+                --num_features 50 --num_labels 121 --batch_size 4 \
+                --hidden 64 > logs/$data-$f/seed$seed/$model-setting-$setting.log
+        done
+    done 
+done 
+

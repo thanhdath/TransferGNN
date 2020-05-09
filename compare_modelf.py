@@ -274,14 +274,14 @@ class GAT(torch.nn.Module):
         super(GAT, self).__init__()
         self.conv1 = GATConv(num_features, args.hidden, heads=4)
         self.lin1 = torch.nn.Linear(num_features, 4 * args.hidden)
-        # self.conv2 = GATConv(4 * args.hidden, args.hidden, heads=4)
-        # self.lin2 = torch.nn.Linear(4 * args.hidden, 4 * args.hidden)
+        self.conv2 = GATConv(4 * args.hidden, args.hidden, heads=4)
+        self.lin2 = torch.nn.Linear(4 * args.hidden, 4 * args.hidden)
         self.conv3 = GATConv(4 * args.hidden, num_classes, heads=6, concat=False)
         self.lin3 = torch.nn.Linear(4 * args.hidden, num_classes)
 
     def forward(self, x, edge_index, edge_attr=None):
         x = F.elu(self.conv1(x, edge_index) + self.lin1(x))
-        # x = F.elu(self.conv2(x, edge_index) + self.lin2(x))
+        x = F.elu(self.conv2(x, edge_index) + self.lin2(x))
         x = self.conv3(x, edge_index) + self.lin3(x)
         if not args.multiclass:
             return F.log_softmax(x, dim=1)
