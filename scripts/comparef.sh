@@ -146,7 +146,6 @@ do
     done 
 done 
 
-
 # TEST TRANSFER WITH 4 SETTINGS - SBM
 data=sbm
 f=gnf
@@ -154,10 +153,10 @@ mkdir logs/$data-$f
 for seed in 100 101 102 103 104
 do
     mkdir logs/$data-$f/seed$seed
-    path=/home/datht/gnf/ckpt-sbm/n256-p8-lam1.5-mu8.0-seed$seed/gnf/gnf_generated_graphs.pkl
+    path=/home/datht/gnf/ckpt-sbm/n128-p8-lam1.5-mu8.0-seed$seed/gnf/gnf_generated_graphs.pkl
     for setting in A B C D 
     do
-        for model in mean sum gcn sgc gat
+        for model in mean sum gcn sgc gat mlp
         do
             echo $setting-$model 
             python -u compare_modelf.py --data-path $path \
@@ -281,7 +280,7 @@ do
     path=/home/datht/gran/exp/ppi-seed$seed/GRANMixtureBernoulli_ppi/sbm_gran.pkl
     for setting in A B C D 
     do
-        for model in gat
+        for model in mean sum gcn sgc gat
         do
             echo $setting-$model 
             python -u compare_modelf.py --multiclass --data-path $path \
@@ -292,3 +291,175 @@ do
     done 
 done 
 
+data=ppi
+f=gnf
+mkdir logs/$data-$f
+for seed in 100 101 102 103 104
+do
+    mkdir logs/$data-$f/seed$seed
+    path=/home/datht/gnf/ckpt-ppi/seed-$seed/gnf/gnf_generated_graphs.pkl
+    for setting in A B C D 
+    do
+        # for model in mean sum gcn sgc
+        # do
+        #     echo $setting-$model 
+        #     python -u compare_modelf.py --multiclass --data-path $path \
+        #         --epochs 300 --setting $setting --th 0.5 --model $model \
+        #         --num_features 50 --num_labels 121 --batch_size 4 > logs/$data-$f/seed$seed/$model-setting-$setting.log
+        # done
+
+        model=gat
+        echo $setting-$model 
+        python -u compare_sample_nodes.py --multiclass --data-path $path \
+            --epochs 300 --setting $setting --th 0.5 --model $model \
+            --num_features 50 --num_labels 121 --batch_size 1 > logs/$data-$f/seed$seed/$model-setting-$setting.log
+    done 
+done 
+
+
+
+# TEMP
+th=0.001
+data=proteins_full
+f=gnf
+logdir=logs/end2end-$data-$f-th$th
+mkdir $logdir
+for seed in 100 101 102 103 104
+do
+    mkdir $logdir/seed$seed
+    path=/home/datht/gnf/ckpt-proteins/gat/seed$seed/gnf/gnf_generated_graphs.pkl
+    for setting in A B C D 
+    do
+        for model in mean sum gcn sgc gat
+        do
+            echo $setting-$model 
+            python -u compare_modelf.py --data-path $path \
+                --epochs 300 --setting $setting --th $th --model $model \
+                --num_features 29 --num_labels 3 --batch_size 64 \
+                --hidden 64 > $logdir/seed$seed/$model-setting-$setting.log
+        done
+    done 
+done 
+
+th=0.001
+data=sbm
+f=gnf
+logdir=logs/end2end-$data-$f-th$th
+mkdir $logdir
+for seed in 100 101 102 103 104
+do
+    mkdir $logdir/seed$seed
+    path=/home/datht/gnf/ckpt-sbm/gat/n128-p8-lam1.5-mu8.0-seed$seed/gnf/gnf_generated_graphs.pkl
+    for setting in A B C D 
+    do
+        for model in mean sum gcn sgc gat mlp
+        do
+            echo $setting-$model 
+            python -u compare_modelf.py --data-path $path \
+                --epochs 300 --setting $setting --th $th --model $model \
+                --num_features 8 --num_labels 2 --batch_size 32 \
+                --hidden 64  > $logdir/seed$seed/$model-setting-$setting.log
+        done
+    done 
+done 
+
+th=0.001
+data=ppi
+f=gnf
+logdir=logs/end2end-$data-$f-th$th
+mkdir $logdir
+for seed in 100 101 102 103 104
+do
+    mkdir $logdir/seed$seed
+    path=/home/datht/gnf/ckpt-ppi/end2end/seed$seed/gnf/gnf_generated_graphs.pkl
+    for setting in A B C D 
+    do
+        for model in mean sum gcn sgc
+        do
+            echo $setting-$model 
+            python -u compare_modelf.py --multiclass --data-path $path \
+                --epochs 300 --setting $setting --th $th --model $model \
+                --num_features 50 --num_labels 121 --batch_size 4 > $logdir/seed$seed/$model-setting-$setting.log
+        done
+
+        model=gat
+        echo $setting-$model 
+        python -u compare_sample_nodes.py --multiclass --data-path $path \
+            --epochs 300 --setting $setting --th 0.001 --model $model \
+            --num_features 50 --num_labels 121 --batch_size 1 > $logdir/seed$seed/$model-setting-$setting.log
+    done 
+done 
+
+
+
+
+
+
+data=proteins_full
+f=gnf
+logdir=logs/end2end-$data-$f-th0.5
+mkdir $logdir
+for seed in 100 101 102 103 104
+do
+    mkdir $logdir/seed$seed
+    path=/home/datht/gnf/ckpt-proteins/gat/seed$seed/gnf/gnf_generated_graphs.pkl
+    for setting in A B C D 
+    do
+        for model in mean sum gcn sgc gat
+        do
+            echo $setting-$model 
+            python -u compare_modelf.py --data-path $path \
+                --epochs 300 --setting $setting --th 0.5 --model $model \
+                --num_features 29 --num_labels 3 --batch_size 64 \
+                --hidden 64 > $logdir/seed$seed/$model-setting-$setting.log
+        done
+    done 
+done 
+
+
+data=sbm
+f=gnf
+logdir=logs/end2end-$data-$f-th0.5
+mkdir $logdir
+for seed in 100 101 102 103 104
+do
+    mkdir $logdir/seed$seed
+    path=/home/datht/gnf/ckpt-sbm/gat/n128-p8-lam1.5-mu8.0-seed$seed/gnf/gnf_generated_graphs.pkl
+    for setting in A B C D 
+    do
+        for model in mean sum gcn sgc gat mlp
+        do
+            echo $setting-$model 
+            python -u compare_modelf.py --data-path $path \
+                --epochs 300 --setting $setting --th 0.5 --model $model \
+                --num_features 8 --num_labels 2 --batch_size 32 \
+                --hidden 64  > $logdir/seed$seed/$model-setting-$setting.log
+        done
+    done 
+done 
+
+data=ppi
+f=gnf
+logdir=logs/end2end-$data-$f-th0.5
+mkdir $logdir
+for seed in 100 101 102 103 104
+do
+    mkdir $logdir/seed$seed
+    path=/home/datht/gnf/ckpt-ppi/end2end/seed$seed/gnf/gnf_generated_graphs.pkl
+    for setting in A B C D 
+    do
+        for model in mean sum gcn sgc
+        do
+            echo $setting-$model 
+            python -u compare_modelf.py --multiclass --data-path $path \
+                --epochs 300 --setting $setting --th 0.5 --model $model \
+                --num_features 50 --num_labels 121 --batch_size 4 > $logdir/seed$seed/$model-setting-$setting.log
+        done
+
+        model=gat
+        echo $setting-$model 
+        python -u compare_sample_nodes.py --multiclass --data-path $path \
+            --epochs 300 --setting $setting --th 0.5 --model $model \
+            --num_features 50 --num_labels 121 --batch_size 1 > $logdir/seed$seed/$model-setting-$setting.log
+    done 
+done 

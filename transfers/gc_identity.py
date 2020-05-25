@@ -297,6 +297,58 @@ class GIN(torch.nn.Module):
     def __repr__(self):
         return self.__class__.__name__
 
+# class GIN(torch.nn.Module):
+#     def __init__(self, num_layers, hidden):
+#         super(GIN, self).__init__()
+#         features_dim = 128
+#         self.mapping = nn.Sequential(
+#             nn.Linear(num_features, args.features_dim*2),
+#             nn.ReLU(),
+#             nn.Linear(args.features_dim*2, args.features_dim)
+#         )
+
+#         self.conv1 = GINConv(Sequential(
+#             Linear(args.features_dim, hidden),
+#             ReLU(),
+#             Linear(hidden, hidden),
+#             ReLU(),
+#             BN(hidden),
+#         ), train_eps=True)
+#         self.convs = torch.nn.ModuleList()
+#         for i in range(num_layers - 1):
+#             self.convs.append(
+#                 GINConv(Sequential(
+#                     Linear(hidden, hidden),
+#                     ReLU(),
+#                     Linear(hidden, hidden),
+#                     ReLU(),
+#                     BN(hidden),
+#                 ),
+#                         train_eps=True))
+#         self.lin1 = Linear(hidden, hidden)
+#         self.lin2 = Linear(hidden, num_classes) # to freeze
+
+#     def reset_parameters(self):
+#         self.conv1.reset_parameters()
+#         for conv in self.convs:
+#             conv.reset_parameters()
+#         self.lin1.reset_parameters()
+#         self.lin2.reset_parameters()
+
+#     def forward(self, x, edge_index, batch):
+#         x = self.mapping(x)
+#         x = self.conv1(x, edge_index)
+#         for conv in self.convs:
+#             x = conv(x, edge_index)
+#         x = global_mean_pool(x, batch)
+#         x = F.relu(self.lin1(x))
+#         x = F.dropout(x, p=0.5, training=self.training)
+#         x = self.lin2(x)
+#         return F.log_softmax(x, dim=-1)
+
+#     def __repr__(self):
+#         return self.__class__.__name__
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = GIN(5, 64).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)

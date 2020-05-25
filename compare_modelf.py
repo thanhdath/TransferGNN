@@ -201,7 +201,7 @@ def load_graph(data_path):
         data = []
         for g in graphs:
             adj = nx.to_numpy_matrix(g)
-            edge_index = np.argwhere(adj >= args.th).T
+            edge_index = np.argwhere(adj > args.th).T
             print(f"Number of edges: {edge_index.shape[1]}")
             features = np.array([g.nodes()[x]['features']
                                  for x in g.nodes()])[:, :args.num_features]
@@ -238,17 +238,16 @@ parser.add_argument("--num_labels", default=2, type=int)
 parser.add_argument("--hidden", default=64, type=int)
 parser.add_argument("--multiclass", action='store_true')
 parser.add_argument("--model", default='mean',
-                    choices=['gat', 'mean', 'sum', 'sgc', 'gcn'])
+                    choices=['gat', 'mean', 'sum', 'sgc', 'gcn', 'mlp'])
 parser.add_argument("--seed", default=100, type=int)
 parser.add_argument("--th", default=0.5, type=float)
-parser.add_argument("--setting", default='A', choices=['A', 'B', 'C', 'D'])
+parser.add_argument("--setting", default='A', choices=['A', 'B', 'C', 'D', 'E'])
 args = parser.parse_args()
 np.random.seed(args.seed)
 torch.manual_seed(args.seed)
 torch.cuda.manual_seed(args.seed)
 
-train_graphs_original, test_graphs_original, train_graphs_gen, test_graphs_gen = load_graph(
-    args.data_path)
+train_graphs_original, test_graphs_original, train_graphs_gen, test_graphs_gen = load_graph(args.data_path)
 num_features = args.num_features
 num_classes = args.num_labels
 print("Num features:", num_features)
@@ -266,7 +265,19 @@ elif args.setting == 'C':
 elif args.setting == 'D':
     train_graphs = train_graphs_original
     test_graphs = test_graphs_gen
+elif args.setting == 'E':
+    train_graphs = train_graphs_gen + train_graphs_original
+    test_graphs = test_graphs_original
 
+
+if "ppi" in args.data_path:
+    val_graphs = train_graphs[-2:]
+    train_graphs = train_graphs[:-2]
+else:
+    n_val = int(len(train_graphs)*0.1)
+    inds = np.random.permutation(len(train_graphs))
+    val_graphs = [train_graphs[x] for x in inds[:n_val]]
+    train_graphs = [train_graphs[x] for x in inds[n_val:]]
 
 class GAT(torch.nn.Module):
 
@@ -359,6 +370,24 @@ class GCN(torch.nn.Module):
             return F.log_softmax(x, dim=1)
         return x
 
+class MLP(torch.nn.Module):
+    def __init__(self):
+        super(MLP, self).__init__()
+        # self.model = torch.nn.Sequential(
+        #     torch.nn.Linear(num_features, num_features*2),
+        #     torch.nn.ReLU(),
+        #     torch.nn.Linear(num_features*2, num_classes)
+        # )
+        self.model = torch.nn.Sequential(
+            torch.nn.Linear(num_features, num_classes)
+        )
+
+    def forward(self, x, edge_index):
+        x = self.model(x)
+        if args.multiclass:
+            return x
+        return F.log_softmax(x, dim=1)
+
 
 def merge_graphs(graphs):
     edges = []
@@ -373,6 +402,8 @@ def merge_graphs(graphs):
     edges = torch.cat(edges, dim=1)
     xs = torch.cat(xs, dim=0)
     ys = torch.cat(ys, dim=0)
+    if not args.multiclass and len(ys.shape) == 2:
+        ys = ys.argmax(dim=1)
     assert edges.shape[0] == 2
     return edges, xs, ys
 
@@ -468,9 +499,18 @@ elif args.model == "sgc":
     model = SGC().to(device)
 elif args.model == "gcn":
     model = GCN().to(device)
-else:
+elif args.model == "mlp":
+    model = MLP().to(device)
+elif args.model == "mean":
     model = GraphsageMEAN().to(device)
 print(model)
+
+import os
+import time
+if not os.path.isdir("model"):
+    os.makedirs("model")
+model_path = f"model/{args.model}-{time.time()}.pkl"
+
 lr = 0.005
 
 criterion = torch.nn.BCEWithLogitsLoss()
@@ -479,17 +519,24 @@ optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 best_val_acc = 0
 best_model = None
 epochs = args.epochs
+
 train_acc, _ = test(train_graphs, n_randoms=4)
-test_acc, _ = test(test_graphs)
-log = 'Epoch: 0, Acc Train: {:.4f}, Test: {:.4f}'
-print(log.format(train_acc, test_acc))
+val_acc, _ = test(val_graphs)
+log = 'Epoch: 0, Acc Train: {:.4f}, Val: {:.4f}'
+print(log.format(train_acc, val_acc))
 
 for epoch in range(1, epochs):
     train(train_graphs)
-    train_acc, _ = test(train_graphs, n_randoms=2)
 
-    if epoch % 1 == 0 or epoch == epochs - 1:
-        test_acc, _ = test(test_graphs)
-        log = 'Epoch: {:03d}, Acc Train: {:.4f}, Test: {:.4f}'
-        print(log.format(epoch, train_acc, test_acc))
+    if epoch % 10 == 0 or epoch == epochs - 1:
+        train_acc, _ = test(train_graphs, n_randoms=4)
+        val_acc, _ = test(val_graphs)
+        log = 'Epoch: {:03d}, Acc Train: {:.4f}, Val: {:.4f}'
+        print(log.format(epoch, train_acc, val_acc))
 
+        if val_acc > best_val_acc:
+            torch.save(model.state_dict(), model_path)
+            best_val_acc = val_acc
+model.load_state_dict(torch.load(model_path))
+test_acc, _ = test(test_graphs)
+print(f'Test: {test_acc:.3f}')

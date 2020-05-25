@@ -1,9 +1,13 @@
-sh scripts/synthetic-ex.sh 5 1.1
-sh scripts/synthetic-ex.sh 5 0.1
-sh scripts/synthetic-ex.sh 0.3 1.1
-sh scripts/synthetic-ex.sh 0.1 1.1
-sh scripts/synthetic-ex.sh 0.7 0.9
-sh scripts/synthetic-ex.sh 0.1 0.1
-sh scripts/synthetic-ex.sh 0.1 0.9
-sh scripts/synthetic-ex.sh 2 0.1
 
+for gnn in sgc gcn
+do
+    logdir=logs/sbm-$gnn
+    mkdir $logdir
+    for seed in 100 101 102 103 104
+    do 
+        mkdir $logdir/seed$seed
+        python -u transfers/sbm_gc.py --lam 1 --mu 8 --p 32 \
+            --n 128 --n-graphs 300 --epochs 300 --hidden 32 \
+            --gnn $gnn --f ori > $logdir/seed$seed/log.log
+    done
+done  

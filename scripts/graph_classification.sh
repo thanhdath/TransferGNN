@@ -12,12 +12,12 @@ done
 mkdir logs/gc
 for seed in $(seq 102 102)
 do
-    mkdir logs/gc/syn-seed$seed
+    mkdir logs/gc/seed$seed
     for data in BZR BZR_MD COIL-DEL COLLAB COX2 DBLP_v1 DHFR DD ENZYMES FRANKENSTEIN IMDB-BINARY IMDB-MULTI Letter-high Mutagenicity MSRC_21 MUTAG NCI109 PROTEINS REDDIT-BINARY       
     do
         for init in svd degree kcore triangle deepwalk one
         do
-            python -u transfers/gc_identity.py --data $data --init $init --seed $seed > logs/gc/syn-seed$seed/$data-$init.log
+            python -u transfers/gc_identity.py --data $data --init $init --seed $seed > logs/gc/seed$seed/$data-$init.log
         done
     done 
 done
@@ -50,13 +50,13 @@ done
 mkdir logs/gc
 for seed in $(seq 100 104)
 do
-    mkdir logs/gc/syn-seed$seed
+    mkdir logs/gc/seed$seed
     for data in DD DHFR ENZYMES FRANKENSTEIN IMDB-BINARY PROTEINS REDDIT-BINARY
     do
         for init in real svd degree degree-standard triangle kcore
         do
             echo $data-$init
-            python -u transfers/gc_identity.py --data $data --init $init --seed $seed > logs/gc/syn-seed$seed/$data-$init.log
+            python -u transfers/gc_identity.py --data $data --init $init --seed $seed > logs/gc/seed$seed/$data-$init.log
         done
     done 
 done
@@ -76,3 +76,18 @@ done
 
 REDDIT-BINARY
 tmux a -t 1
+
+
+mkdir logs/gc
+for seed in $(seq 100 104)
+do
+    mkdir logs/gc/seed$seed
+    for data in ENZYMES
+    do
+        for init in real
+        do
+            echo $data-$init
+            python -u transfers/gc_identity.py --data $data --init $init --seed $seed > logs/gc/seed$seed/$data-$init.log
+        done
+    done 
+done

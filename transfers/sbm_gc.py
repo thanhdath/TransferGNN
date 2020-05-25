@@ -6,7 +6,7 @@ import torch
 import torch.nn.functional as F
 from torch_geometric.datasets import Planetoid
 import torch_geometric.transforms as T
-from torch_geometric.nn import ChebConv, GATConv, GCNConv, SAGEConv
+from torch_geometric.nn import ChebConv, GATConv, GCNConv, SAGEConv, SGConv
 from data import load_graph
 import argparse
 import os
@@ -26,12 +26,13 @@ from sklearn.preprocessing import MultiLabelBinarizer
 from torch_geometric.data import NeighborSampler, Data
 import re
 from scipy.sparse import csr_matrix, vstack, hstack
-
+import time
 import json
 import networkx as nx
 from networkx.readwrite import json_graph
 from networkx.generators.random_graphs import connected_watts_strogatz_graph
 from transfers.utils import gen_graph, generate_graph
+import random
 
 def gen_sbm():
     graphs = []
@@ -78,9 +79,11 @@ parser.add_argument('--n-graphs', type=int, default=300)
 parser.add_argument("--epochs", default=200, type=int)
 parser.add_argument("--hidden", default=64, type=int)
 parser.add_argument("--seed", default=100, type=int)
+parser.add_argument("--gnn", default='mean', choices=['mean', 'gcn', 'sgc'])
 parser.add_argument("--f", choices=["ori", "knn", "sigmoid", "random"])
 args = parser.parse_args()
 np.random.seed(args.seed)
+random.seed(args.seed)
 torch.manual_seed(args.seed)
  
 args.multiclass = False
@@ -90,50 +93,15 @@ print("Num features:", num_features)
 print("Num classes:", num_classes)
 
 train_graphs, test_graphs = gen_sbm()
-# GCN
+n_val = int(len(train_graphs) * 0.1)
+random.shuffle(train_graphs)
+val_graphs = train_graphs[:n_val]
+train_graphs = train_graphs[n_val:]
 
-# class Net(torch.nn.Module):
-
-#     def __init__(self):
-#         super(Net, self).__init__()
-#         id_features_dim = 128
-#         self.mapping = nn.Linear(num_features, id_features_dim)
-#         self.conv1 = GATConv(id_features_dim, 256, heads=4)
-#         self.lin1 = torch.nn.Linear(id_features_dim, 4 * 256)
-#         self.conv2 = GATConv(4 * 256, 256, heads=4)
-#         self.lin2 = torch.nn.Linear(4 * 256, 4 * 256)
-#         self.conv3 = GATConv(4 * 256, num_classes, heads=6, concat=False)
-#         self.lin3 = torch.nn.Linear(4 * 256, num_classes)
-
-#     def forward(self, x, edge_index, edge_attr=None):
-#         x = self.mapping(x)
-#         x = F.elu(self.conv1(x, edge_index) + self.lin1(x))
-#         x = F.elu(self.conv2(x, edge_index) + self.lin2(x))
-#         x = self.conv3(x, edge_index) + self.lin3(x)
-#         return x
-
-# class Net(torch.nn.Module):
-
-#     def __init__(self):
-#         super(Net, self).__init__()
-#         self.conv1 = GATConv(num_features, 256, heads=4)
-#         self.lin1 = torch.nn.Linear(num_features, 4 * 256)
-#         self.conv2 = GATConv(4 * 256, num_classes, heads=4, concat=False)
-#         self.lin2 = torch.nn.Linear(4 * 256, num_classes)
-#         # self.conv3 = GATConv(4 * 256, num_classes, heads=6, concat=False)
-#         # self.lin3 = torch.nn.Linear(4 * 256, num_classes)
-
-#     def forward(self, x, edge_index):
-#         x = F.elu(self.conv1(x, edge_index) + self.lin1(x))
-#         x = self.conv2(x, edge_index) + self.lin2(x)
-#         # x = self.conv3(x, edge_index) + self.lin3(x)
-#         return x
-
-
-class Net(torch.nn.Module):
+class GraphsageMEAN(torch.nn.Module):
 
     def __init__(self):
-        super(Net, self).__init__()
+        super(GraphsageMEAN, self).__init__()
         # id_features_dim = 128
         # self.mapping = nn.Linear(num_features, id_features_dim)
         self.conv1 = SAGEConv(num_features, args.hidden, normalize=False)
@@ -149,6 +117,32 @@ class Net(torch.nn.Module):
         x = F.relu(x)
         x = F.dropout(x, training=self.training)
         x = self.conv3(x, edge_index)
+        return F.log_softmax(x, dim=1)
+
+class GCN(torch.nn.Module):
+    def __init__(self):
+        super(GCN, self).__init__()
+        self.conv1 = GCNConv(num_features, args.hidden, cached=False, normalize=True)
+        self.conv2 = GCNConv(args.hidden, args.hidden*2, cached=False, normalize=True)
+        self.conv3 = GCNConv(args.hidden*2, num_classes, cached=False, normalize=True)
+
+    def forward(self, x, edge_index, edge_attr=None):
+        x = self.conv1(x, edge_index)
+        x = F.relu(x)
+        x = F.dropout(x, training=self.training)
+        x = self.conv2(x, edge_index)
+        x = F.relu(x)
+        x = F.dropout(x, training=self.training)
+        x = self.conv3(x, edge_index)
+        return F.log_softmax(x, dim=1)
+
+class SGC(torch.nn.Module):
+    def __init__(self):
+        super(SGC, self).__init__()
+        self.conv1 = SGConv(num_features, num_classes, K=2, cached=False)
+
+    def forward(self, x, edge_index, edge_attr=None):
+        x = self.conv1(x, edge_index)
         return F.log_softmax(x, dim=1)
 
 def train(train_graphs):
@@ -228,23 +222,34 @@ def getfilename(path):
     return path.split("/")[-1].split(".")[0]
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model = Net().to(device)
+if args.gnn == 'mean':
+    model = GraphsageMEAN().to(device)
+elif args.gnn == 'gcn':
+    model = GCN().to(device)
+elif args.gnn == 'sgc':
+    model = SGC().to(device)
 lr = 0.005
 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+model_name = f"{time.time()}"
+model_path = f"model/{model_name}.pkl"
 
 epochs = args.epochs
-train_acc, train_macro = test(train_graphs, n_randoms=2)
-log = 'Epoch: 0, micro-macro Train: {:.4f}-{:.4f}'
-print(log.format(train_acc, train_macro))
+# train_acc, train_macro = test(train_graphs, n_randoms=2)
+# log = 'Epoch: 0, micro-macro Train: {:.4f}-{:.4f}'
+# print(log.format(train_acc, train_macro))
 
-# best_val_acc = val_acc
+best_val_acc = 0
 for epoch in range(1, epochs):
     train(train_graphs)
-    train_acc, train_macro = test(train_graphs, n_randoms=2)
     if epoch % 20 == 0 or epoch == epochs - 1:
-        log = 'Epoch: {:03d}, micro-macro Train: {:.4f}-{:.4f}'
-        print(log.format(epoch, train_acc, train_macro))
-
-val_acc, val_macro = test(test_graphs)
-log = 'Val: {:.4f}-{:.4f}'
-print(log.format(val_acc, val_macro))
+        train_acc, train_macro = test(train_graphs, n_randoms=2)
+        val_acc, val_macro = test(val_graphs, n_randoms=len(val_graphs))
+        log = 'Epoch: {:03d}, micro-macro Train: {:.4f}-{:.4f} Val: {:.4f}-{:.4f}'
+        print(log.format(epoch, train_acc, train_macro, val_acc, val_macro))
+        if val_acc > best_val_acc:
+            best_val_acc = val_acc
+            torch.save(model.state_dict(), model_path)
+model.load_state_dict(torch.load(model_path))
+test_acc, test_macro = test(test_graphs)
+log = 'Test: {:.4f}-{:.4f}'
+print(log.format(test_acc, test_macro))
