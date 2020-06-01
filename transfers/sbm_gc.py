@@ -79,7 +79,7 @@ parser.add_argument('--n-graphs', type=int, default=300)
 parser.add_argument("--epochs", default=200, type=int)
 parser.add_argument("--hidden", default=64, type=int)
 parser.add_argument("--seed", default=100, type=int)
-parser.add_argument("--gnn", default='mean', choices=['mean', 'gcn', 'sgc'])
+parser.add_argument("--gnn", default='mean', choices=['mean', 'gcn', 'sgc', 'mlp'])
 parser.add_argument("--f", choices=["ori", "knn", "sigmoid", "random"])
 args = parser.parse_args()
 np.random.seed(args.seed)
@@ -143,6 +143,15 @@ class SGC(torch.nn.Module):
 
     def forward(self, x, edge_index, edge_attr=None):
         x = self.conv1(x, edge_index)
+        return F.log_softmax(x, dim=1)
+
+class MLP(torch.nn.Module):
+    def __init__(self):
+        super(MLP, self).__init__()
+        self.model = torch.nn.Linear(num_features, num_classes)
+
+    def forward(self, x, edge_index, edge_attr=None):
+        x = self.model(x)
         return F.log_softmax(x, dim=1)
 
 def train(train_graphs):
@@ -228,6 +237,8 @@ elif args.gnn == 'gcn':
     model = GCN().to(device)
 elif args.gnn == 'sgc':
     model = SGC().to(device)
+elif args.gnn == 'mlp':
+    model = MLP().to(device)
 lr = 0.005
 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 model_name = f"{time.time()}"

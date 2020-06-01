@@ -37,22 +37,24 @@ def gen_graph(n=200, p=128, lam=1.0, mu=0.3, u=None):
     labels[labels == -1] = 0
     return A, B, labels
 
-def generate_graph(features, kind="sigmoid", k=5):
+def generate_graph(features, kind="sigmoid", k=5, log=True):
     features_norm = F.normalize(features, dim=1)
     # scores = features_norm.mm(features_norm.t())
     N = len(features_norm)
     scores = torch.pdist(features_norm)
     # print("Scores before sigmoid")
     # print(scores)
-    print(f"Generate graph using {kind}")
+    if log:
+        print(f"Generate graph using {kind}")
     if kind == "sigmoid":
         # print("Scores after sigmoid")
         scores = 1 - torch.sigmoid(scores)
         # find index to cut 
         n_edges = int((k*N - N)/2)
         threshold = scores[torch.argsort(-scores)[n_edges]]
-        print(f"Scores range: {scores.min():.3f}-{scores.max():.3f}")
-        print(f"Expected average degree: {k} => Threshold: {threshold:.3f}")
+        if log:
+            print(f"Scores range: {scores.min():.3f}-{scores.max():.3f}")
+            print(f"Expected average degree: {k} => Threshold: {threshold:.3f}")
         edges = scores >= threshold
         adj = np.zeros((len(features), len(features)), dtype=np.int)
         inds = torch.triu(torch.ones(len(adj),len(adj))) 
@@ -62,7 +64,8 @@ def generate_graph(features, kind="sigmoid", k=5):
         adj[adj > 0] = 1
     elif kind == "knn":
         k = int(k)
-        print(f"Knn k = {k}")
+        if log:
+            print(f"Knn k = {k}")
         scores_matrix = np.zeros((len(features), len(features)))
         inds = torch.triu(torch.ones(len(features),len(features))) 
         inds[np.arange(len(features)), np.arange(len(features))] = 0
@@ -85,5 +88,6 @@ def generate_graph(features, kind="sigmoid", k=5):
         adj[edge_index[:,0], edge_index[:,1]] = 1
     else:
         raise NotImplementedError
-    print("Number of edges: ", adj.sum())
+    if log:
+        print("Number of edges: ", adj.sum())
     return adj

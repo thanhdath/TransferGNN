@@ -91,3 +91,41 @@ do
         done
     done 
 done
+
+
+logdir=logs/mnist
+mkdir $logdir
+for seed in $(seq 101 104)
+do
+    # python -u mnist.py --data grid --seed $seed > $logdir/grid-seed$seed.log 
+    # python -u mnist.py --data super --seed $seed > $logdir/super-seed$seed.log 
+    python -u transfer.py --from_data grid --to_data super --seed $seed > $logdir/grid2super-seed$seed.log 
+    python -u transfer.py --from_data super --to_data grid --seed $seed > $logdir/super2grid-seed$seed.log 
+done
+
+
+# TORUS & SPHERE
+logdir=logs/torus-sphere
+mkdir $logdir
+for seed in $(seq 100 104)
+do
+    for from_data in knn sigmoid
+    do 
+        for to_data in knn sigmoid
+        do 
+            python -u transfers/torus_and_sphere.py --from-data $from_data --from-noise 0.0\
+                --to-data $to_data --to-noise 0.0 --seed $seed --epochs 100 --num-graphs 500 > $logdir/from-$from_data-to-$to_data-seed$seed.log
+        done
+    done
+
+    # for from_noise in 0.0 0.001 0.005 0.01 0.05 0.1 
+    # do 
+    #     for to_noise in 0.0 0.001 0.005 0.01 0.05 0.1 
+    #     do 
+    #         python -u transfers/torus_and_sphere.py --from-data knn --from-noise $from_noise\
+    #             --to-data knn --to-noise $to_noise --seed $seed > $logdir/from-knn$from_noise-to-knn$to_noise-seed$seed.log
+    #     done
+    # done
+    
+done
+

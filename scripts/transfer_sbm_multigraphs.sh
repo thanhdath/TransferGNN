@@ -275,3 +275,15 @@ done
 #         done 
 #     done
 # done
+
+
+n=128
+p=32
+mu=8
+lam=1
+logdir=logs/sbm-n$128-p$p-mu$mu-lam$lam
+mkdir $logdir
+for seed in $(seq 100 104)
+do
+    python -u transfers/sbm_gc.py --seed $seed --n $n --p $p --lam $lam --mu $mu --f ori --gnn mlp > $logdir/seed$seed.log
+done
