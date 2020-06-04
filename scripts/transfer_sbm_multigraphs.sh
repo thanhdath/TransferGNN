@@ -7,6 +7,6 @@ do
     mkdir $logdir
     for seed in $(seq 100 104)
     do
-        python -u transfers/sbm_gc.py --seed $seed --n $n --p $p --lam $lam --mu $mu --f ori --gnn mlp > $logdir/seed$seed.log
+        python -u transfers/sbm_gc.py --seed $seed --n $n --p $p --lam $lam --mu $mu --f ori --gnn mean > $logdir/seed$seed.log
     done
 done

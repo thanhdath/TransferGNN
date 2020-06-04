@@ -90,14 +90,14 @@ best_result = (float('inf'), 0, 0)  # (loss, acc, std)
 num_layers = 1
 hidden = 32
 if args.to_data == "grid":
-    test_dataset = get_dataset("MNIST_Grid_test", sparse=Net != DiffPool)
+    test_dataset = get_dataset("MNIST_Grid_test", sparse=True)
 elif args.to_data == "super":
-    test_dataset = load_mnist_superpixels(train=False, sparse=Net != DiffPool)
+    test_dataset = load_mnist_superpixels(train=False, sparse=True)
 
 if args.from_data == "grid":
-    val_dataset = get_dataset("MNIST_Grid_test", sparse=Net != DiffPool)
+    val_dataset = get_dataset("MNIST_Grid_test", sparse=True)
 elif args.from_data == "super":
-    val_dataset = load_mnist_superpixels(train=False, sparse=Net != DiffPool)
+    val_dataset = load_mnist_superpixels(train=False, sparse=True)
 
 model = torch.load(f'model/{Net.__name__}-mnist-{args.from_data}-seed{args.seed}.pth')
 if 'adj' in val_dataset[0]:

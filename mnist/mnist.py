@@ -95,11 +95,11 @@ hidden = 32
 print(f"Net: {Net}")
 best_result = (float('inf'), 0, 0)  # (loss, acc, std)
 if args.data == "grid":
-    train_dataset = get_dataset("MNIST_Grid_train", sparse=Net != DiffPool)
-    test_dataset = get_dataset("MNIST_Grid_test", sparse=Net != DiffPool)
+    train_dataset = get_dataset("MNIST_Grid_train", sparse=True)
+    test_dataset = get_dataset("MNIST_Grid_test", sparse=True)
 elif args.data == "super":
-    train_dataset = load_mnist_superpixels(train=True, sparse=Net != DiffPool)
-    test_dataset = load_mnist_superpixels(train=False, sparse=Net != DiffPool)
+    train_dataset = load_mnist_superpixels(train=True, sparse=True)
+    test_dataset = load_mnist_superpixels(train=False, sparse=True)
 
 model = Net(train_dataset, num_layers, hidden)
 loss, acc, std = custom_train_test_set(
