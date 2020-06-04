@@ -47,15 +47,15 @@ def sample_torus(R, r, n_nodes):
         theta = 2*np.pi*v 
         threshold = (R + r*math.cos(omega))/(R+r)
         if w <= threshold:
-            x = (R+r*math.cos(omega))*math.cos(theta) / (R+r)
-            y = (R+r*math.cos(omega))*math.sin(theta) / (R+r)
-            z = r*math.sin(omega) / r 
+            x = (R+r*math.cos(omega))*math.cos(theta) #/ (R+r)
+            y = (R+r*math.cos(omega))*math.sin(theta) #/ (R+r)
+            z = r*math.sin(omega) #/ r 
             ps_x.append(x)
             ps_y.append(y)
             ps_z.append(z)
     return torch.tensor(list(zip(ps_x, ps_y, ps_z)))
 
-def generate_graph_with_noise(features, kind="sigmoid", threshold=None, k=5, noise=0.0):
+def generate_graph_with_noise(features, kind="sigmoid", k=5, noise=0.0):
     adj = generate_graph(features, kind, k, log=False)
     if noise > 0:
         n_expected = int(len(adj)**2 * noise)//2
@@ -80,7 +80,7 @@ def generate_torus_and_sphere():
         pre_dataset.append((features, 0))
     for _ in range(args.num_graphs//2):
         n_nodes = np.random.randint(100, 200)
-        features = sample_torus(80, 40, n_nodes)
+        features = sample_torus(80, 40, n_nodes) /120
         pre_dataset.append((features, 1))
 
     # Split train-val-test before build f function on features
@@ -97,7 +97,7 @@ def generate_torus_and_sphere():
     val_dataset = []
     test_dataset = []
     for features, label in train_predataset:
-        adj = generate_graph_with_noise(features, kind=args.from_data, threshold=args.threshold, k=args.from_k, noise=args.from_noise)
+        adj = generate_graph_with_noise(features, kind=args.from_data, k=args.from_k, noise=args.from_noise)
         features = torch.FloatTensor(features)
         labels = torch.LongTensor([label])
         src, trg = adj.nonzero()
@@ -105,7 +105,7 @@ def generate_torus_and_sphere():
         new_data = Data(x=features, y=labels, edge_index=edge_index)
         train_dataset.append(new_data)
     for features, label in val_predataset:
-        adj = generate_graph_with_noise(features, kind=args.from_data, threshold=args.threshold, k=args.from_k, noise=args.from_noise)
+        adj = generate_graph_with_noise(features, kind=args.from_data, k=args.from_k, noise=args.from_noise)
         features = torch.FloatTensor(features)
         labels = torch.LongTensor([label])
         src, trg = adj.nonzero()
@@ -113,7 +113,7 @@ def generate_torus_and_sphere():
         new_data = Data(x=features, y=labels, edge_index=edge_index)
         val_dataset.append(new_data)
     for features, label in test_predataset:
-        adj = generate_graph_with_noise(features, kind=args.to_data, threshold=args.threshold, k=args.to_k, noise=args.to_noise)
+        adj = generate_graph_with_noise(features, kind=args.to_data, k=args.to_k, noise=args.to_noise)
         features = torch.FloatTensor(features)
         labels = torch.LongTensor([label])
         src, trg = adj.nonzero()
@@ -130,7 +130,6 @@ parser.add_argument('--from-noise', type=float, default=0.0)
 parser.add_argument('--to-noise', type=float, default=0.0)
 parser.add_argument('--from-k', type=int, default=5)
 parser.add_argument('--to-k', type=int, default=5)
-parser.add_argument('--threshold', type=float, default=0.72)
 parser.add_argument('--batch-size', type=int, default=128)
 parser.add_argument('--epochs', default=100, type=int)
 parser.add_argument('--seed', type=int, default=100)

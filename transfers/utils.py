@@ -38,7 +38,7 @@ def gen_graph(n=200, p=128, lam=1.0, mu=0.3, u=None):
     return A, B, labels
 
 def generate_graph(features, kind="sigmoid", k=5, log=True):
-    features_norm = F.normalize(features, dim=1))
+    features_norm = F.normalize(features, dim=1)
     N = len(features_norm)
     scores = torch.pdist(features_norm)
     if log:

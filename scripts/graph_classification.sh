@@ -31,9 +31,10 @@ do
 done
 
 # MNIST SUPERPIXELS & MNIST GRID
+cd mnist
 logdir=logs/mnist
 mkdir $logdir
-for seed in $(seq 101 104)
+for seed in $(seq 100 104)
 do
     python -u mnist.py --data grid --seed $seed > $logdir/grid-seed$seed.log 
     python -u mnist.py --data super --seed $seed > $logdir/super-seed$seed.log 
@@ -47,20 +48,20 @@ logdir=logs/torus-sphere
 mkdir $logdir
 for seed in $(seq 100 104)
 do
-    python transfers/torus_and_sphere.py --num-graphs 500 \
+    python transfers/torus_and_sphere.py --num-graphs 1000 \
         --from-data knn --to-data knn \
-        --from-k 20 --to-k 20 --epochs 50 --threshold 0.6 \
+        --from-k 5 --to-k 5 --epochs 50 \
         --batch-size 128 --seed $seed > $logdir/from-knn-to-knn-seed$seed.log
-    python -u transfers/torus_and_sphere.py --num-graphs 500 \
-        --from-data sigmoid --to-data sigmoid --threshold 0.6 \
-        --from-k 10 --to-k 10 \
+    python -u transfers/torus_and_sphere.py --num-graphs 1000 \
+        --from-data sigmoid --to-data sigmoid \
+        --from-k 10 --to-k 10 --epochs 50 \
         --batch-size 128 --seed $seed > $logdir/from-sigmoid-to-sigmoid-seed$seed.log
-    python -u transfers/torus_and_sphere.py --num-graphs 500 \
-        --from-data knn --to-data sigmoid --threshold 0.6 \
-        --from-k 20 --to-k 10 \
+    python -u transfers/torus_and_sphere.py --num-graphs 1000 \
+        --from-data knn --to-data sigmoid \
+        --from-k 5 --to-k 10  --epochs 50 \
         --batch-size 128 --seed $seed > $logdir/from-knn-to-sigmoid-seed$seed.log
-    python -u transfers/torus_and_sphere.py --num-graphs 500 \
+    python -u transfers/torus_and_sphere.py --num-graphs 1000 \
         --from-data sigmoid --to-data knn \
-        --from-k 10 --to-k 20 --threshold 0.6 \
+        --from-k 10 --to-k 5  --epochs 50 \
         --batch-size 128 --seed $seed > $logdir/from-sigmoid-to-knn-seed$seed.log
 done
