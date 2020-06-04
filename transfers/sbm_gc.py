@@ -1,35 +1,15 @@
-# ppi, learn and transfer from multi graphs
-
-import os.path as osp
-
 import torch
 import torch.nn.functional as F
-from torch_geometric.datasets import Planetoid
-import torch_geometric.transforms as T
 from torch_geometric.nn import ChebConv, GATConv, GCNConv, SAGEConv, SGConv
-from data import load_graph
 import argparse
 import os
 from sklearn.metrics import f1_score
-import numpy as np
-#import matplotlib.pyplot as plt
-import tensorboardX
-from sklearn.metrics import classification_report
-# from sage import SAGEConv
-
-import torch
 import torch.nn as nn
 import numpy as np
 import networkx as nx
-from scipy import sparse
-from sklearn.preprocessing import MultiLabelBinarizer
-from torch_geometric.data import NeighborSampler, Data
 import re
-from scipy.sparse import csr_matrix, vstack, hstack
 import time
 import json
-import networkx as nx
-from networkx.readwrite import json_graph
 from networkx.generators.random_graphs import connected_watts_strogatz_graph
 from transfers.utils import gen_graph, generate_graph
 import random
@@ -41,7 +21,6 @@ def gen_sbm():
         if i % 100 == 0:
             print(f"{i+1}/{args.n_graphs}")
         Asbm, X, L = gen_graph(n=args.n, p=args.p, lam=args.lam, mu=args.mu, u=u)
-        # Asbm[np.arange(len(Asbm)), np.arange(len(Asbm))] = 0
         src, trg = Asbm.nonzero()
         edge_index = torch.LongTensor(np.concatenate([src.reshape(1, -1), trg.reshape(1,-1)], axis=0))
         features = torch.FloatTensor(X)

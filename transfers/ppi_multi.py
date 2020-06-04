@@ -1,15 +1,3 @@
-"""
-logdir=logs/transfer-ppi/
-mkdir $logdir
-for seed in 100 101 102 103 104
-do
-    for f in ori knn sigmoid
-    do
-        python -u transfer_ppi.py --seed $seed --f $f > $logdir/$f-seed$seed.log
-    done
-done
-"""
-
 import torch
 import torch.nn.functional as F
 from torch_geometric.nn import ChebConv, GCNConv, SAGEConv, SGConv, GATConv
@@ -24,6 +12,7 @@ import pickle
 import json
 from networkx.readwrite import json_graph
 from transfers.utils import generate_graph
+from networkx.generators.random_graphs import connected_watts_strogatz_graph
 
 def get_graph(g):
     features = np.array([g.nodes()[x]['features'] for x in g.nodes()])
@@ -40,12 +29,11 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--data-path", default="data/ppi.pkl")
 parser.add_argument("--epochs", default=300, type=int)
 parser.add_argument("--batch-size", default=4, type=int)
-# specify num features, due to previously padded with zeros
 parser.add_argument("--hidden", default=64, type=int)
 parser.add_argument("--model", default='mean',
                     choices=['gat', 'mean', 'sum', 'sgc', 'gcn', 'mlp'])
 parser.add_argument("--seed", default=100, type=int)
-parser.add_argument("--f", default='ori', choices=['knn', 'sigmoid', 'ori'])
+parser.add_argument("--f", default='ori', choices=['knn', 'sigmoid', 'ori', 'random'])
 args = parser.parse_args()
 np.random.seed(args.seed)
 torch.manual_seed(args.seed)
@@ -76,6 +64,9 @@ if args.f != "ori":
             adj = generate_graph(features, kind="knn", k=k)
         elif args.f == "sigmoid":
             adj = generate_graph(features, kind="sigmoid", k=k)
+        elif args.f == 'random':
+            G = connected_watts_strogatz_graph(features.shape[0], k+1, p=0.1)
+            adj = nx.to_numpy_matrix(G)
         src, trg = adj.nonzero()
         new_edge_index = torch.LongTensor(np.concatenate([src.reshape(1, -1), trg.reshape(1,-1)], axis=0))
         converted_test_graphs.append((new_edge_index, features, labels))
