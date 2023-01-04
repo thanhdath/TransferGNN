@@ -1,6 +1,6 @@
 Code for paper "Nature vs. Nurture: Feature vs. Structure for Graph Neural Networks"[1].
 
-## Install Libs
+### Install Libraries
 
 ```
 conda create -p .env/ python=3.7
@@ -16,4 +16,5 @@ pip install torch-geometric
 pip install -r requirements.txt
 ```
 
+### References
 [1] Thang, Duong Chi, Hoang Thanh Dat, Nguyen Thanh Tam, Jun Jo, Nguyen Quoc Viet Hung, and Karl Aberer. "Nature vs. Nurture: Feature vs. Structure for Graph Neural Networks." Pattern Recognition Letters 159 (2022): 46-53.
