@@ -39,15 +39,11 @@ def gen_graph(n=200, p=128, lam=1.0, mu=0.3, u=None):
 
 def generate_graph(features, kind="sigmoid", k=5, log=True):
     features_norm = F.normalize(features, dim=1)
-    # scores = features_norm.mm(features_norm.t())
     N = len(features_norm)
     scores = torch.pdist(features_norm)
-    # print("Scores before sigmoid")
-    # print(scores)
     if log:
         print(f"Generate graph using {kind}")
     if kind == "sigmoid":
-        # print("Scores after sigmoid")
         scores = 1 - torch.sigmoid(scores)
         # find index to cut 
         n_edges = int((k*N - N)/2)

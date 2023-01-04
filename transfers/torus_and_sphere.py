@@ -4,7 +4,6 @@ import torch
 import matplotlib.pyplot as plt
 import random
 import math
-from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 unused import
 import torch.nn.functional as F
 import os 
 from transfers.utils import generate_graph
@@ -40,7 +39,7 @@ def sample_torus(R, r, n_nodes):
     ps_x = []
     ps_y = []
     ps_z = []
-    for _ in range(n_nodes):
+    while len(ps_x) < n_nodes:
         u = random.random()
         v = random.random()
         w = random.random()
@@ -48,9 +47,9 @@ def sample_torus(R, r, n_nodes):
         theta = 2*np.pi*v 
         threshold = (R + r*math.cos(omega))/(R+r)
         if w <= threshold:
-            x = (R+r*math.cos(omega))*math.cos(theta)
-            y = (R+r*math.cos(omega))*math.sin(theta)
-            z = r*math.sin(omega)
+            x = (R+r*math.cos(omega))*math.cos(theta) #/ (R+r)
+            y = (R+r*math.cos(omega))*math.sin(theta) #/ (R+r)
+            z = r*math.sin(omega) #/ r 
             ps_x.append(x)
             ps_y.append(y)
             ps_z.append(z)
@@ -59,10 +58,13 @@ def sample_torus(R, r, n_nodes):
 def generate_graph_with_noise(features, kind="sigmoid", k=5, noise=0.0):
     adj = generate_graph(features, kind, k, log=False)
     if noise > 0:
-        n_added_edges = int(len(adj)**2 * noise)
+        n_expected = int(len(adj)**2 * noise)//2
+        std = int(len(adj)**2 * noise)//5
+        n_added_edges = np.random.randint(n_expected-std, n_expected+std) 
         no_edge_index = np.argwhere(adj == 0)
         add_edge_index = np.random.permutation(no_edge_index)[:n_added_edges]
         adj[add_edge_index[:,0], add_edge_index[:,1]] = 1
+        adj[add_edge_index[:,1], add_edge_index[:,0]] = 1
         src, trg = adj.nonzero()
         edge_index = np.concatenate([src.reshape(-1,1), trg.reshape(-1,1)], axis=1)
         print(f"Random add {n_added_edges} edges")
@@ -71,7 +73,6 @@ def generate_graph_with_noise(features, kind="sigmoid", k=5, noise=0.0):
 def generate_torus_and_sphere():
     print("Generate torus & sphere")
     pre_dataset = []
-    dataset = []
     # Generate sphere graphs
     for _ in range(args.num_graphs//2):
         n_nodes = np.random.randint(100, 200)
@@ -79,8 +80,9 @@ def generate_torus_and_sphere():
         pre_dataset.append((features, 0))
     for _ in range(args.num_graphs//2):
         n_nodes = np.random.randint(100, 200)
-        features = sample_torus(80, 40, n_nodes) / 120
+        features = sample_torus(80, 40, n_nodes) /120
         pre_dataset.append((features, 1))
+
     # Split train-val-test before build f function on features
     inds = np.random.permutation(len(pre_dataset)).tolist()
     pre_dataset = [pre_dataset[x] for x in inds]
@@ -129,7 +131,7 @@ parser.add_argument('--to-noise', type=float, default=0.0)
 parser.add_argument('--from-k', type=int, default=5)
 parser.add_argument('--to-k', type=int, default=5)
 parser.add_argument('--batch-size', type=int, default=128)
-parser.add_argument('--epochs', default=200, type=int)
+parser.add_argument('--epochs', default=100, type=int)
 parser.add_argument('--seed', type=int, default=100)
 args = parser.parse_args()
 
@@ -138,22 +140,6 @@ np.random.seed(args.seed)
 random.seed(args.seed)
 torch.manual_seed(args.seed)
 torch.cuda.manual_seed(args.seed)
-
-if args.from_data == "knn":
-    args.from_k = 5
-elif args.from_data == "sigmoid":
-    args.from_k = 10
-
-if args.to_data == "knn":
-    args.to_k = 5
-elif args.to_data == "sigmoid":
-    args.to_k = 10
-
-# num_graphs = 1000
-# # num_nodes_per_graph = 500
-# graph_method = 'knn'
-# k = 5
-# noises = [0.0, 0.0001, 0.001, 0.01, 0.1]
 
 train_dataset, val_dataset, test_dataset = generate_torus_and_sphere()
 num_features = train_dataset[0].x.shape[1]
@@ -183,9 +169,8 @@ class GIN(torch.nn.Module):
                     Linear(hidden, hidden),
                     ReLU(),
                     BN(hidden),
-                ),
-                        train_eps=True))
-        self.lin1 = Linear(hidden, hidden)
+                ), train_eps=True))
+        # self.lin1 = Linear(hidden, hidden)
         self.lin2 = Linear(hidden, num_classes)
 
     def reset_parameters(self):
@@ -200,8 +185,8 @@ class GIN(torch.nn.Module):
         for conv in self.convs:
             x = conv(x, edge_index)
         x = global_mean_pool(x, batch)
-        x = F.relu(self.lin1(x))
-        x = F.dropout(x, p=0.5, training=self.training)
+        # x = F.relu(self.lin1(x))
+        # x = F.dropout(x, p=0.5, training=self.training)
         x = self.lin2(x)
         return F.log_softmax(x, dim=-1)
 
@@ -209,7 +194,7 @@ class GIN(torch.nn.Module):
         return self.__class__.__name__
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model = GIN(5, 64).to(device)
+model = GIN(2, 64).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
 def train(epoch):
@@ -248,7 +233,7 @@ print('Epoch: 0, Train Acc: {:.3f}, Val Acc: {:.3f} Test Acc: {:.3f}'.format(tra
 best_val_acc = 0
 for epoch in range(1, args.epochs + 1):
     train_loss = train(epoch)
-    if epoch%20 == 0:
+    if epoch%1 == 0:
         val_acc = test(val_loader)
         if val_acc > best_val_acc:
             torch.save(model.state_dict(), model_path)
